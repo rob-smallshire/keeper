@@ -8,12 +8,7 @@ __author__ = 'rjs'
 
 class Value:
     """
-    value.data
-    value.meta
-    value.meta.mime
-    value.meta.path
-    value.meta.length
-    value.meta.encoding
+
     """
 
     def __init__(self, keeper, key):
@@ -50,7 +45,7 @@ class Value:
 
     def as_string(self):
         """
-        Return a string according the the supplied encoding
+        Return a string.
         """
         with self._keeper._storage.open_data(self._key, mode='r',
                                     encoding=self.meta.encoding) as data_file:
@@ -76,7 +71,7 @@ class Value:
         """
         A filesystem path to the resource
         """
-        return self._keeper._storage.path
+        return self._keeper._storage.path(self._key)
 
 
 class ValueMeta:
@@ -88,6 +83,11 @@ class ValueMeta:
         self._mime = mime
         self._encoding = encoding
         self._keywords = kwargs
+
+    @property
+    def length(self):
+        """The length of the data in bytes."""
+        return self._length
 
 
     @property
@@ -147,17 +147,18 @@ class Keeper(object):
         digester = hashlib.sha1()
         digester.update(data)
         digester.update(serialised_meta)
-        digest = digester.hexdigest()
+        key = digester.hexdigest()
 
-        # TODO: Check for the value already being there and return early
+        if key in self:
+            return key
 
-        with self._storage.open_meta(digest, 'w') as meta_file:
+        with self._storage.open_meta(key, 'w') as meta_file:
             meta_file.write(serialised_meta)
 
-        with self._storage.open_data(digest, 'w') as data_file:
+        with self._storage.open_data(key, 'w') as data_file:
             data_file.write(data)
 
-        return digest
+        return key
 
     def __contains__(self, key):
         try:
@@ -185,10 +186,10 @@ class Keeper(object):
         return Value(self, key)
 
     def __delitem__(self, key):
-        """Remove an item by it's key"""
+        """Remove an item by its key"""
         if key not in self:
             raise KeyError(key)
         self._storage.remove(key)
 
     def __len__(self):
-            return sum(1 for _ in self)
+        return sum(1 for _ in self)
