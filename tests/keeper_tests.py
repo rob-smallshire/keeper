@@ -43,23 +43,33 @@ class KeeperTests(unittest.TestCase):
         self.assertEqual(len(self.keeper), 2)
 
 
-    def test_len_two(self):
+    def test_len_identical(self):
+        key1 = self.keeper.add(b'gdgdgdggd')
+        key2 = self.keeper.add(b'gdgdgdggd')
+        self.assertEqual(len(self.keeper), 1)
+
+
+    def test_distinct_keys(self):
         key1 = self.keeper.add(b'hsgshsgsha')
         key2 = self.keeper.add(b'xsgshsgsha')
         self.assertNotEqual(key1, key2)
 
-    def test_len_identical(self):
+
+    def test_key_identical(self):
         key1 = self.keeper.add(b'gdgdgdggd')
         key2 = self.keeper.add(b'gdgdgdggd')
         self.assertEqual(key1, key2)
+
 
     def test_store_strings(self):
         key1 = self.keeper.add("The quick brown fox jumped over the lazy dog")
         pass
 
+
     def test_store_unicode_strings(self):
         key1 = self.keeper.add("Søker for kanaler")
         pass
+
 
     def test_retrieve_bytes(self):
         string = "The hunting of the snark"
@@ -67,19 +77,23 @@ class KeeperTests(unittest.TestCase):
         value = self.keeper[key1]
         self.assertEqual(value.as_string(), string)
 
+
     def test_string_encoding(self):
         string = "It was the best of times. It was the worst of times."
         key1 = self.keeper.add(string)
         value = self.keeper[key1]
         self.assertEqual(value.meta.encoding, sys.getdefaultencoding())
 
+
     def test_unknown_key(self):
         self.assertRaises(KeyError, lambda: self.keeper['hello'])
+
 
     def test_encoding(self):
         data = "søker sjåfør".encode('utf-16')
         key = self.keeper.add(data, encoding='utf-16')
         self.assertEqual(self.keeper[key].meta.encoding, 'utf-16')
+
 
     def test_add_bytes_retrieve_string(self):
         string = "søker sjåfør"
@@ -87,32 +101,49 @@ class KeeperTests(unittest.TestCase):
         key = self.keeper.add(data, encoding='utf-16')
         self.assertEqual(self.keeper[key].as_string(), string)
 
+
     def test_add_string_retrieve_bytes(self):
         string = "søker sjåfør"
         key = self.keeper.add(string)
         self.assertEqual(self.keeper[key].as_bytes(), string.encode())
+
+
+    def test_length(self):
+        data = b'The quick brown fox jumped over the lazy dog.'
+        key = self.keeper.add(data)
+        self.assertEqual(len(self.keeper[key].as_bytes()), self.keeper[key].meta.length)
+
 
     def test_mime_type(self):
         string = "<!DOCTYPE html><html><body><b>Thunderbirds are go</b></body></html>"
         key = self.keeper.add(string, mime="text/html")
         self.assertEqual(self.keeper[key].meta.mime, "text/html")
 
-    def test_meta_keys_distinct(self):
+
+    def test_encoding(self):
         string = "<!DOCTYPE html><html><body><b>Thunderbirds are go</b></body></html>"
-        key1 = self.keeper.add(string, mime="text/html")
-        key2 = self.keeper.add(string, mime="text/plain")
-        self.assertNotEqual(key1, key2)
+        data = string.encode('utf-32')
+        key = self.keeper.add(data, encoding='utf-32')
+        self.assertEqual(self.keeper[key].meta.encoding, 'utf-32')
 
-    def test_encodings_distinct(self):
-        key1 = self.keeper.add(b'', encoding='utf-8')
-        key2 = self.keeper.add(b'', encoding='utf-16')
-        self.assertNotEqual(key1, key2)
 
-    def test_large_data(self):
-        data = os.urandom(10 * 1024 * 1024)
-        key = self.keeper.add(data)
-        data2 = self.keeper[key].as_bytes()
-        self.assertEqual(data, data2)
+    def test_meta_attributes_default(self):
+        key = self.keeper.add(b'')
+        meta = self.keeper[key].meta
+        self.assertIn('length', meta)
+        self.assertIn('mime', meta)
+        self.assertIn('encoding', meta)
+
+
+    def test_iterate_default_meta_attributes(self):
+        key = self.keeper.add(b'')
+        meta = self.keeper[key].meta
+        attributes = list(self.keeper[key].meta)
+        self.assertEqual(len(attributes), 3)
+        self.assertIn('length', attributes)
+        self.assertIn('mime', attributes)
+        self.assertIn('encoding', attributes)
+
 
     def test_arbitrary_metadata(self):
         text = "We'll attach some arbitrary meta data to this"
@@ -120,12 +151,50 @@ class KeeperTests(unittest.TestCase):
         self.assertEqual(self.keeper[key].meta.filename, "foo.txt")
         self.assertEqual(self.keeper[key].meta.author, "Joe Bloggs")
 
+
+    def test_iterate_arbitrary_metadata(self):
+        text = "We'll attach some arbitrary meta data to this"
+        key = self.keeper.add(text, mime="text/plain", filename="foo.txt", author="Joe Bloggs")
+        attributes = list(self.keeper[key].meta)
+        self.assertEqual(len(attributes), 5)
+        self.assertIn('length', attributes)
+        self.assertIn('mime', attributes)
+        self.assertIn('encoding', attributes)
+        self.assertIn('filename', attributes)
+        self.assertIn('author', attributes)
+
+
+    def test_meta_keys_distinct(self):
+        string = "<!DOCTYPE html><html><body><b>Thunderbirds are go</b></body></html>"
+        key1 = self.keeper.add(string, mime="text/html")
+        key2 = self.keeper.add(string, mime="text/plain")
+        self.assertNotEqual(key1, key2)
+
+
+    def test_encodings_distinct(self):
+        key1 = self.keeper.add(b'', encoding='utf-8')
+        key2 = self.keeper.add(b'', encoding='utf-16')
+        self.assertNotEqual(key1, key2)
+
+
+    def test_large_data(self):
+        data = os.urandom(10 * 1024 * 1024)
+        key = self.keeper.add(data)
+        data2 = self.keeper[key].as_bytes()
+        self.assertEqual(data, data2)
+
+
     def test_contains_negative(self):
         self.assertNotIn('2a206783b16f327a53555861331980835a0e059e', self.keeper)
+
 
     def test_contains_positive(self):
         key = self.keeper.add("Some data")
         self.assertIn(key, self.keeper)
+
+
+
+
 
     def test_remove_item_positive(self):
         text = "We'll attach some arbitrary meta data to this"
@@ -133,6 +202,7 @@ class KeeperTests(unittest.TestCase):
         self.assertIn(key, self.keeper)
         del self.keeper[key]
         self.assertNotIn(key, self.keeper)
+
 
     def test_remove_item_negative(self):
         self.assertRaises(KeyError, lambda: self.keeper['2a206783b16f327a53555861331980835a0e059e'])

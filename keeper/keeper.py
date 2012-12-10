@@ -7,8 +7,7 @@ from .storage import filestorage
 __author__ = 'rjs'
 
 class Value:
-    """
-
+    """Access to a keeper value and its metadata.
     """
 
     def __init__(self, keeper, key):
@@ -23,11 +22,11 @@ class Value:
 
     @property
     def meta(self):
+        """The metadata associated with this value."""
         return self._meta
 
     def as_bytes(self):
-        """
-        Return the value as a bytes object.
+        """Return the value as a bytes object.
         """
         with self._keeper._storage.open_data(self._key, 'rb') as data_file:
             data = data_file.read()
@@ -35,8 +34,7 @@ class Value:
         return data
 
     def as_file(self):
-        """
-        Return the data as a read-only file-like object.
+        """Return the data as a read-only file-like object.
         """
         mode = 'rb' if self.meta.encoding is None else 'r'
         return self._keeper._storage.open_data(self._key, mode=mode,
@@ -44,8 +42,11 @@ class Value:
 
 
     def as_string(self):
-        """
-        Return a string.
+        """Return the data as a string.
+
+        The string is constructed from the underlying bytes data using the
+        encoding in self.meta.encoding or the default string encoding if the
+        former is None.
         """
         with self._keeper._storage.open_data(self._key, mode='r',
                                     encoding=self.meta.encoding) as data_file:
@@ -54,22 +55,28 @@ class Value:
 
 
     def __str__(self):
-        """
-        Decoded into a string.
-        """
+        """Return the data as a string.
+
+       The string is constructed from the underlying bytes data using the
+       encoding in self.meta.encoding or the default string encoding if the
+       former is None.
+       """
         return self.as_string()
 
     def __len__(self):
-        """
-        The length of the data in bytes (NOT characters).
+        """The length of the data in bytes (NOT characters).
         """
         return self._meta.length
 
 
     @property
     def path(self):
-        """
-        A filesystem path to the resource
+        """Obtains a filesystem path to the resource.
+
+        Returns:
+            A path to the resource as a string or None.
+
+        The file MUST NOT be modified through this path.
         """
         return self._keeper._storage.path(self._key)
 
@@ -79,32 +86,11 @@ class ValueMeta:
     Immutable meta data for a value.
     """
     def __init__(self, length, mime=None, encoding=None, **kwargs):
-        self._length = length
-        self._mime = mime
-        self._encoding = encoding
-        self._keywords = kwargs
-
-    @property
-    def length(self):
-        """The length of the data in bytes."""
-        return self._length
-
-
-    @property
-    def mime(self):
-        """
-        The MIME type as a string.
-        """
-        return self._mime
-
-
-    @property
-    def encoding(self):
-        """
-        An optional encoding used for string data.
-        """
-        return self._encoding
-
+        self._keywords = {'length': length,
+                          'mime': mime,
+                          'encoding': encoding,
+                          }
+        self._keywords.update(kwargs)
 
     def __getattr__(self, item):
         if item == "_keywords":
@@ -114,6 +100,11 @@ class ValueMeta:
         except KeyError:
             raise AttributeError
 
+    def __iter__(self):
+        yield from self._keywords.keys()
+
+    def __contains__(self, item):
+        return item in self._keywords
 
 class Keeper(object):
 
@@ -178,7 +169,7 @@ class Keeper(object):
             key: A key obtained from add().
 
         Returns:
-            An object representing the data associated with key.
+            A Value object representing the data associated with key.
 
         Raises:
             KeyError: If the key is unknown.
