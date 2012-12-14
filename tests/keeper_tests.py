@@ -193,9 +193,6 @@ class KeeperTests(unittest.TestCase):
         self.assertIn(key, self.keeper)
 
 
-
-
-
     def test_remove_item_positive(self):
         text = "We'll attach some arbitrary meta data to this"
         key = self.keeper.add(text, mime="text/plain", filename="foo.txt", author="Joe Bloggs")
@@ -207,3 +204,7 @@ class KeeperTests(unittest.TestCase):
     def test_remove_item_negative(self):
         self.assertRaises(KeyError, lambda: self.keeper['2a206783b16f327a53555861331980835a0e059e'])
 
+    def test_add_stream_in_context(self):
+        with self.keeper.add_stream() as stream:
+            stream.write(b"The quick brown fox jumped over the lazy dog")
+        self.assertIn(stream.key, self.keeper)

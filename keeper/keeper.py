@@ -7,7 +7,7 @@ from .storage import filestorage
 __author__ = 'rjs'
 
 class Value:
-    """Access to a keeper value and its metadata.
+    """Access to a value and its metadata.
     """
 
     def __init__(self, keeper, key):
@@ -22,11 +22,15 @@ class Value:
 
     @property
     def meta(self):
-        """The metadata associated with this value."""
+        """The metadata associated with this value.
+
+        Returns:
+            The ValueMeta object corresponding to this value.
+        """
         return self._meta
 
     def as_bytes(self):
-        """Return the value as a bytes object.
+        """Access the value as a bytes object.
         """
         with self._keeper._storage.open_data(self._key, 'rb') as data_file:
             data = data_file.read()
@@ -34,7 +38,7 @@ class Value:
         return data
 
     def as_file(self):
-        """Return the data as a read-only file-like object.
+        """Access the data as a read-only file-like object.
         """
         mode = 'rb' if self.meta.encoding is None else 'r'
         return self._keeper._storage.open_data(self._key, mode=mode,
@@ -76,7 +80,8 @@ class Value:
         Returns:
             A path to the resource as a string or None.
 
-        The file MUST NOT be modified through this path.
+        Warning:
+            The file MUST NOT be modified through this path.
         """
         return self._keeper._storage.path(self._key)
 
@@ -106,10 +111,94 @@ class ValueMeta:
     def __contains__(self, item):
         return item in self._keywords
 
+class WriteableStream:
+
+    def __init__(self, keeper, mime, encoding, **kwargs):
+        self._keeper = keeper
+        self._encoding = encoding
+        self._file = self._keeper._storage.open_temp('w+', encoding)
+        self._mime = mime
+        self._keywords = kwargs
+        self._key = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.close()
+        return False
+
+    @property
+    def mime(self):
+        return self._mime
+
+    @property
+    def encoding(self):
+        return self._encoding
+
+    @property
+    def key(self):
+        return self._key
+
+
+    def __getattr__(self, item):
+        # Forward all other operations to the underlying file
+        if item == "_file":
+            raise AttributeError
+        try:
+            return getattr(self._file, item)
+        except KeyError:
+            raise AttributeError(item)
+
+
+    def close(self):
+        if self.closed:
+            return self._key
+
+        self._file.flush()
+        self._file.seek(0)
+
+        # May need to close the file here and reopen in binary to get
+        # bytes data for the digest
+
+        digester = hashlib.sha1()
+
+        while True:
+            data = self._file.read(16 * 1024 * 1024)
+            if not data:
+                break
+            digester.update(data)
+
+        length = self._file.tell()
+
+        meta = ValueMeta(length=length, mime=self._mime, encoding=self._encoding,
+                         **self._keywords)
+        serialised_meta = pickle.dumps(meta)
+        digester.update(serialised_meta)
+        fileno = self._file.fileno()
+        self._file.close()
+        self._key = digester.hexdigest()
+        if self._key not in self._keeper:
+            self._keeper._storage.promote_temp(fileno, self._key)
+            with self._keeper._storage.open_meta(self._key, 'w') as meta_file:
+                meta_file.write(serialised_meta)
+        else:
+            self._keeper._storage.remove_temp(fileno)
+        return self._key
+
+
+
 class Keeper(object):
 
     def __init__(self, dirname):
         self._storage = filestorage.FileStorage(dirname)
+
+    def add_stream(self, mime=None, encoding=None, **kwargs):
+        """Returns an open, writable file-like-object and context manager
+        which when closed, commits the data to this keeper. Only then is the
+        key accessible through the key property of the returned object
+        """
+        return WriteableStream(self, mime, encoding, **kwargs)
 
     def add(self, data, mime=None, encoding=None, **kwargs):
         """Adds data into the store.
@@ -132,7 +221,6 @@ class Keeper(object):
             raise TypeError("data type must be bytes or str")
 
         meta = ValueMeta(length=len(data), mime=mime, encoding=encoding, **kwargs)
-
         serialised_meta = pickle.dumps(meta)
 
         digester = hashlib.sha1()
