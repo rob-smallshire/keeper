@@ -208,3 +208,65 @@ class KeeperTests(unittest.TestCase):
         with self.keeper.add_stream() as stream:
             stream.write(b"The quick brown fox jumped over the lazy dog")
         self.assertIn(stream.key, self.keeper)
+
+    def test_add_stream_with_close(self):
+        stream = self.keeper.add_stream()
+        stream.write(b"The very hungry caterpillar")
+        stream.close()
+        self.assertIn(stream.key, self.keeper)
+
+    def test_key_in_none_before_close(self):
+        stream = self.keeper.add_stream()
+        stream.write(b"The very hungry caterpillar")
+        self.assertIs(stream.key, None)
+        stream.close()
+
+    def test_key_identical_bytes_add_before_stream(self):
+        key1 = self.keeper.add(b'gdgdgdggd')
+        with self.keeper.add_stream() as stream:
+            stream.write(b'gdgdgdggd')
+        key2 = stream.key
+        self.assertEqual(key1, key2)
+        self.assertEqual(len(self.keeper), 1)
+
+    def test_key_identical_bytes_stream_before_add(self):
+        with self.keeper.add_stream() as stream:
+            stream.write(b'gdgdgdggd')
+        key1 = stream.key
+        key2 = self.keeper.add(b'gdgdgdggd')
+        self.assertEqual(key1, key2)
+        self.assertEqual(len(self.keeper), 1)
+
+    def test_key_identical_strings_add_before_stream(self):
+        key1 = self.keeper.add('gdgdgdggd')
+        with self.keeper.add_stream(encoding=sys.getdefaultencoding()) as stream:
+            stream.write('gdgdgdggd')
+        key2 = stream.key
+        self.assertEqual(key1, key2)
+        self.assertEqual(len(self.keeper), 1)
+
+    def test_key_identical_strings_stream_before_add(self):
+        with self.keeper.add_stream(encoding=sys.getdefaultencoding()) as stream:
+            stream.write('gdgdgdggd')
+        key1 = stream.key
+        key2 = self.keeper.add('gdgdgdggd')
+        self.assertEqual(key1, key2)
+        self.assertEqual(len(self.keeper), 1)
+
+    def test_cleanup_pending_add_stream(self):
+        stream = self.keeper.add_stream()
+        stream.write(b"The very hungry caterpillar")
+        self.assertIs(stream.key, None)
+        # deliberately omitted close
+        self.assertEqual(len(self.keeper), 0)
+
+        self.keeper = Keeper(self.keeper_root)
+        stream = self.keeper.add_stream()
+        stream.write(b"The very hungry caterpillar")
+        stream.close()
+        self.assertEqual(len(self.keeper), 1)
+
+
+
+
+

@@ -150,34 +150,34 @@ class WriteableStream:
         except KeyError:
             raise AttributeError(item)
 
+    def _reopen(self, mode, encoding):
+        name = self._file.name
+        if not self._file.closed:
+            self._file.close()
+        return open(name, mode=mode, encoding=encoding)
+
 
     def close(self):
         if self.closed:
             return self._key
 
-        self._file.flush()
-        self._file.seek(0)
+        fileno = self._file.fileno()
 
-        # May need to close the file here and reopen in binary to get
-        # bytes data for the digest
-
-        digester = hashlib.sha1()
-
-        while True:
-            data = self._file.read(16 * 1024 * 1024)
-            if not data:
-                break
-            digester.update(data)
-
-        length = self._file.tell()
+        with self._reopen(mode='rb', encoding=None) as self._file:
+            digester = hashlib.sha1()
+            while True:
+                data = self._file.read(16 * 1024 * 1024)
+                if not data:
+                    break
+                digester.update(data)
+            length = self._file.tell()
 
         meta = ValueMeta(length=length, mime=self._mime, encoding=self._encoding,
                          **self._keywords)
         serialised_meta = pickle.dumps(meta)
         digester.update(serialised_meta)
-        fileno = self._file.fileno()
-        self._file.close()
         self._key = digester.hexdigest()
+
         if self._key not in self._keeper:
             self._keeper._storage.promote_temp(fileno, self._key)
             with self._keeper._storage.open_meta(self._key, 'w') as meta_file:
@@ -196,7 +196,11 @@ class Keeper(object):
     def add_stream(self, mime=None, encoding=None, **kwargs):
         """Returns an open, writable file-like-object and context manager
         which when closed, commits the data to this keeper. Only then is the
-        key accessible through the key property of the returned object
+        key accessible through the key property of the returned object.
+
+        encoding: If encoding is None (the default) the returned file-like-
+            object will only accept bytes objects. If the encoding is not None
+            only strings will be accepted.
         """
         return WriteableStream(self, mime, encoding, **kwargs)
 
