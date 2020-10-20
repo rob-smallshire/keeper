@@ -100,13 +100,12 @@ class FileStorage:
         meta_file = open(meta_path, mode)
         return meta_file
 
-
     def path(self, key):
         return os.path.join(self._data_root_path,
             self._relative_key_path(key))
 
-
     def open_data(self, key, mode='r', encoding=None):
+        # TODO: We should write the file to a temporary path then atomically move it into place
         data_path = self.path(key)
         dir_path = os.path.dirname(data_path)
         os.makedirs(dir_path, exist_ok=True)
@@ -121,6 +120,9 @@ class FileStorage:
         os.remove(self._meta_path(key))
         os.remove(self.path(key))
 
+    def close(self):
+        self._directory_path = None
+    
 
 
 

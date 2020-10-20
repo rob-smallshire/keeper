@@ -6,6 +6,33 @@ from .storage import filestorage
 
 __author__ = 'rjs'
 
+
+class ValueMeta:
+    """
+    Immutable meta data for a value.
+    """
+    def __init__(self, length, mime=None, encoding=None, **kwargs):
+        self._keywords = {'length': length,
+                          'mime': mime,
+                          'encoding': encoding,
+                          }
+        self._keywords.update(kwargs)
+
+    def __getattr__(self, item):
+        if item == "_keywords":
+            raise AttributeError
+        try:
+            return self._keywords[item]
+        except KeyError:
+            raise AttributeError
+
+    def __iter__(self):
+        yield from self._keywords.keys()
+
+    def __contains__(self, item):
+        return item in self._keywords
+
+
 class Value:
     """Access to a value and its metadata.
     """
@@ -21,7 +48,7 @@ class Value:
             raise KeyError(key)
 
     @property
-    def meta(self):
+    def meta(self) -> ValueMeta:
         """The metadata associated with this value.
 
         Returns:
@@ -85,31 +112,6 @@ class Value:
         """
         return self._keeper._storage.path(self._key)
 
-
-class ValueMeta:
-    """
-    Immutable meta data for a value.
-    """
-    def __init__(self, length, mime=None, encoding=None, **kwargs):
-        self._keywords = {'length': length,
-                          'mime': mime,
-                          'encoding': encoding,
-                          }
-        self._keywords.update(kwargs)
-
-    def __getattr__(self, item):
-        if item == "_keywords":
-            raise AttributeError
-        try:
-            return self._keywords[item]
-        except KeyError:
-            raise AttributeError
-
-    def __iter__(self):
-        yield from self._keywords.keys()
-
-    def __contains__(self, item):
-        return item in self._keywords
 
 class WriteableStream:
 
@@ -187,10 +189,16 @@ class WriteableStream:
         return self._key
 
 
+class KeeperClosed(Exception):
+    
+    def __init__(self):
+        super().__init__("Keeper has been closed")
+
 
 class Keeper(object):
 
     def __init__(self, dirname):
+        # TODO: Use dependency injection here
         self._storage = filestorage.FileStorage(dirname)
 
     def add_stream(self, mime=None, encoding=None, **kwargs):
@@ -202,6 +210,8 @@ class Keeper(object):
             object will only accept bytes objects. If the encoding is not None
             only strings will be accepted.
         """
+        if not self._storage:
+            raise KeeperClosed()
         return WriteableStream(self, mime, encoding, **kwargs)
 
     def add(self, data, mime=None, encoding=None, **kwargs):
@@ -214,7 +224,10 @@ class Keeper(object):
         Returns:
             A key for the data
         """
-
+        # TODO: If this method delegated to add_stream, we'd get renaming for free
+        if not self._storage:
+            raise KeeperClosed()
+        
         if isinstance(data, str):
             encoding = encoding or sys.getdefaultencoding()
             if encoding != sys.getdefaultencoding():
@@ -244,6 +257,8 @@ class Keeper(object):
         return key
 
     def __contains__(self, key):
+        if not self._storage:
+            raise KeeperClosed()
         try:
             with self._storage.open_meta(key):
                 return True
@@ -252,6 +267,8 @@ class Keeper(object):
 
 
     def __iter__(self):
+        if not self._storage:
+            raise KeeperClosed()
         yield from self._storage
 
     def __getitem__(self, key):
@@ -266,13 +283,23 @@ class Keeper(object):
         Raises:
             KeyError: If the key is unknown.
         """
+        if not self._storage:
+            raise KeeperClosed()
         return Value(self, key)
 
     def __delitem__(self, key):
         """Remove an item by its key"""
+        if not self._storage:
+            raise KeeperClosed()
         if key not in self:
             raise KeyError(key)
         self._storage.remove(key)
 
     def __len__(self):
+        if not self._storage:
+            raise KeeperClosed()
         return sum(1 for _ in self)
+    
+    def close(self):
+        self._storage.close()
+        self._storage = None
