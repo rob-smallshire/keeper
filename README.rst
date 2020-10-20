@@ -51,6 +51,7 @@ After the stream has closed, retrieve the key::
 Deployment
 ==========
 
+To build and deploy a package to PyPI::
 
   $ python setup.py sdist bdist_wheel
   $ twine upload dist/*
