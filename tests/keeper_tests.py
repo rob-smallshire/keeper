@@ -2,6 +2,7 @@ import os
 import sys
 import shutil
 import unittest
+import warnings
 
 from keeper import Keeper
 
@@ -228,17 +229,21 @@ class KeeperTests(unittest.TestCase):
         self.assertEqual(len(self.keeper), 1)
 
     def test_cleanup_pending_add_stream(self):
-        stream = self.keeper.add_stream()
-        stream.write(b"The very hungry caterpillar")
-        self.assertIs(stream.key, None)
-        # deliberately omitted close
-        self.assertEqual(len(self.keeper), 0)
+        # Temporarily ignore warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
 
-        self.keeper = Keeper(self.keeper_root)
-        stream = self.keeper.add_stream()
-        stream.write(b"The very hungry caterpillar")
-        stream.close()
-        self.assertEqual(len(self.keeper), 1)
+            stream = self.keeper.add_stream()
+            stream.write(b"The very hungry caterpillar")
+            self.assertIs(stream.key, None)
+            # deliberately omitted close causes an intentional ResourceWarning
+            self.assertEqual(len(self.keeper), 0)
+
+            self.keeper = Keeper(self.keeper_root)
+            stream = self.keeper.add_stream()
+            stream.write(b"The very hungry caterpillar")
+            stream.close()
+            self.assertEqual(len(self.keeper), 1)
 
 
 
