@@ -1,6 +1,4 @@
-# Asq's setup.py
-
-from distutils.core import setup
+from setuptools import setup, find_packages
 
 version = "0.6.0"
 
@@ -9,7 +7,8 @@ with open('README.md', 'r') as readme:
 
 setup(
     name = "keeper",
-    packages = ["keeper"],
+    package_dir={'': 'source'},
+    packages=find_packages('source'),
     version = "{version}".format(version=version),
     description = "A file-based value store for bytes and strings.",
     author = "Robert Smallshire",
@@ -22,7 +21,6 @@ setup(
         "Development Status :: 3 - Alpha",
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.3",
         "Environment :: Other Environment",
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",

@@ -1,6 +1,7 @@
 import hashlib
 import pickle
 import sys
+from pathlib import Path
 
 from .storage import filestorage
 
@@ -190,16 +191,24 @@ class WriteableStream:
 
 
 class KeeperClosed(Exception):
-    
+
     def __init__(self):
         super().__init__("Keeper has been closed")
 
 
 class Keeper(object):
 
-    def __init__(self, dirname):
-        # TODO: Use dependency injection here
-        self._storage = filestorage.FileStorage(dirname)
+    def __init__(self, dirpath):
+        """Instantiate a Keeper store with a directory path.
+        """
+        dirpath = Path(dirpath)
+        self._storage = filestorage.FileStorage(dirpath)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exception_type, exception_value, traceback):
+        self.close()
 
     def add_stream(self, mime=None, encoding=None, **kwargs):
         """Returns an open, writable file-like-object and context manager
@@ -227,7 +236,7 @@ class Keeper(object):
         # TODO: If this method delegated to add_stream, we'd get renaming for free
         if not self._storage:
             raise KeeperClosed()
-        
+
         if isinstance(data, str):
             encoding = encoding or sys.getdefaultencoding()
             if encoding != sys.getdefaultencoding():
@@ -299,7 +308,7 @@ class Keeper(object):
         if not self._storage:
             raise KeeperClosed()
         return sum(1 for _ in self)
-    
+
     def close(self):
         self._storage.close()
         self._storage = None
