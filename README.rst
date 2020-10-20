@@ -47,3 +47,12 @@ After the stream has closed, retrieve the key::
 
        key = stream.key
 
+
+Deployment
+==========
+
+
+  $ python setup.py sdist bdist_wheel
+  $ twine upload dist/*
+
+
