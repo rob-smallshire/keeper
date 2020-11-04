@@ -5,6 +5,7 @@ import uuid
 
 META_EXTENSION = '.pickle'
 
+
 class FileStorage:
 
     def __init__(self, dirpath, levels=None):
