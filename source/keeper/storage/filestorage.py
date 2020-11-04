@@ -60,7 +60,6 @@ class FileStorage:
     def root_path(self):
         return self._directory_path
 
-
     def _relative_key_path(self, key):
         if len(key) < self._levels:
             raise ValueError("Key is too short")
@@ -68,7 +67,6 @@ class FileStorage:
         path_components = list(key[:self._levels])
         path_components.append(key[self._levels:])
         return  os.path.join(*path_components)
-
 
     #noinspection PyTypeChecker
     def __iter__(self):
@@ -80,11 +78,9 @@ class FileStorage:
                  key = prefix + suffix
                  yield key
 
-
     def _meta_path(self, key):
         return os.path.join(self._meta_root_path,
             self._relative_key_path(key) + META_EXTENSION)
-
 
     def open_temp(self, mode='w', encoding=None):
         temp_filename = str(uuid.uuid4())
@@ -94,7 +90,6 @@ class FileStorage:
         temp_file = open(temp_path, mode=mode, encoding=encoding)
         self._temp_files[temp_file.fileno()] = temp_path
         return temp_file
-
 
     def promote_temp(self, fileno, key):
         if fileno not in self._temp_files:
