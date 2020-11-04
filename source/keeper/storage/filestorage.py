@@ -10,6 +10,10 @@ class FileStorage:
 
     def __init__(self, dirpath, levels=None):
         """
+        Args:
+            dirpath: The path to a directory in which data will be stored. If dirpath does
+                not exist it will be created.
+
         Raises:
             FileExistsError: If parts of the structure within dirpath already exist, but
                 are not directories as expected.
@@ -19,8 +23,7 @@ class FileStorage:
         #       path objects. It needs refactoring to Paths.
         dirpath = str(dirpath)
 
-        if not os.path.exists(dirpath) and os.path.isdir(dirpath):
-            raise ValueError("FileStorage: directory_path does not exist")
+        self._ensure_directory_exists(dirpath)
 
         self._levels = levels if levels is not None else 4
 
@@ -28,10 +31,7 @@ class FileStorage:
         self._meta_root_path = os.path.join(dirpath, 'meta')
         self._data_root_path = os.path.join(dirpath, 'data')
 
-        try:
-            shutil.rmtree(self._temp_root_path)
-        except FileNotFoundError:
-            pass
+        shutil.rmtree(self._temp_root_path, ignore_errors=True)
 
         self._ensure_directory_exists(self._temp_root_path)
         self._ensure_directory_exists(self._meta_root_path)

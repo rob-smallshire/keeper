@@ -11,10 +11,8 @@ class KeeperTests(unittest.TestCase):
 
     def setUp(self):
         self.keeper_root = 'testkeeper'
-        try:
-            shutil.rmtree(self.keeper_root)
-        except FileNotFoundError:
-            pass
+        shutil.rmtree(self.keeper_root, ignore_errors=True)
+
         try:
             os.mkdir(self.keeper_root)
         except FileExistsError:
