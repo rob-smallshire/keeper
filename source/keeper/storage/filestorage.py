@@ -8,6 +8,11 @@ META_EXTENSION = '.pickle'
 class FileStorage:
 
     def __init__(self, dirpath, levels=None):
+        """
+        Raises:
+            FileExistsError: If parts of the structure within dirpath already exist, but
+                are not directories as expected.
+        """
 
         # TODO: This class is very much based around using strings as paths rather than
         #       path objects. It needs refactoring to Paths.
@@ -27,18 +32,29 @@ class FileStorage:
         except FileNotFoundError:
             pass
 
-        os.mkdir(self._temp_root_path)
-
-        if not (os.path.exists(self._meta_root_path) and os.path.isdir(self._meta_root_path)):
-            os.mkdir(self._meta_root_path)
-
-        if not (os.path.exists(self._data_root_path) and os.path.isdir(self._data_root_path)):
-            os.mkdir(self._data_root_path)
+        self._ensure_directory_exists(self._temp_root_path)
+        self._ensure_directory_exists(self._meta_root_path)
+        self._ensure_directory_exists(self._data_root_path)
 
         self._directory_path = dirpath
 
         self._temp_files = {}
 
+    @staticmethod
+    def _ensure_directory_exists(dirpath):
+        """Ensure that a directory exists.
+
+        Args:
+            dirpath: The pathe to the directory.
+
+        Raises:
+            FileExistsError: If the path already exists, but is not a directory.
+        """
+        if not os.path.exists(dirpath):
+            os.mkdir(dirpath)
+        else:
+            if not os.path.isdir(dirpath):
+                raise FileExistsError(f"{dirpath} already exists but is a file, not a directory")
 
     @property
     def root_path(self):
