@@ -75,9 +75,9 @@ class FileStorage:
             prefix_dirpath = dirpath[len(self._meta_root_path):]
             prefix = ''.join(prefix_dirpath.split(os.sep))
             for filename in filenames:
-                 suffix = filename[:-len(META_EXTENSION)]
-                 key = prefix + suffix
-                 yield key
+                suffix = filename[:-len(META_EXTENSION)]
+                key = prefix + suffix
+                yield key
 
     def _meta_path(self, key):
         return os.path.join(self._meta_root_path,
