@@ -53,6 +53,7 @@ Deployment
 
 To build and deploy a package to PyPI::
 
+  $ bumpversion patch
   $ python setup.py sdist bdist_wheel
   $ twine upload dist/*
 
