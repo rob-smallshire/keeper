@@ -46,14 +46,14 @@ class FileStorage:
         """Ensure that a directory exists.
 
         Args:
-            dirpath: The pathe to the directory.
+            dirpath: The path to the directory.
 
         Raises:
             FileExistsError: If the path already exists, but is not a directory.
         """
-        if not os.path.exists(dirpath):
+        try:
             os.mkdir(dirpath)
-        else:
+        except FileExistsError:
             if not os.path.isdir(dirpath):
                 raise FileExistsError(f"{dirpath} already exists but is a file, not a directory")
 
