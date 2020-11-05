@@ -2,10 +2,12 @@ import hashlib
 import pickle
 import sys
 from pathlib import Path
+import logging
 
 from .storage import filestorage
 
-__author__ = 'rjs'
+
+logger = logging.getLogger(__name__)
 
 
 class ValueMeta:
@@ -100,7 +102,6 @@ class Value:
         """
         return self._meta.length
 
-
     @property
     def path(self):
         """Obtains a filesystem path to the resource.
@@ -117,6 +118,12 @@ class Value:
 class WriteableStream:
 
     def __init__(self, keeper, mime, encoding, **kwargs):
+        logger.debug(
+            "Creating %s with MIME type %r and encoding %r",
+            type(self).__name__,
+            mime,
+            encoding
+        )
         self._keeper = keeper
         self._encoding = encoding
         self._file = self._keeper._storage.open_temp('w+', encoding)
@@ -143,7 +150,6 @@ class WriteableStream:
     def key(self):
         return self._key
 
-
     def __getattr__(self, item):
         # Forward all other operations to the underlying file
         if item == "_file":
@@ -155,17 +161,30 @@ class WriteableStream:
 
     def _reopen(self, mode, encoding):
         name = self._file.name
+        logger.debug("%s reopening %r", type(self).__name__, name)
         if not self._file.closed:
+            logger.debug("%s needs to close file %r", type(self).__name__, name)
             self._file.close()
-        return open(name, mode=mode, encoding=encoding)
-
+            logger.debug("%s closed file %r", type(self).__name__, name)
+        f = open(name, mode=mode, encoding=encoding)
+        logger.debug(
+            "%s reopened %r in mode %r with encoding %r",
+            type(self).__name__,
+            name,
+            mode,
+            encoding
+        )
+        return f
 
     def close(self):
+        logger.debug("%s closing", type(self).__name__)
         if self.closed:
+            logger.debug("%s already closed, returning key %r", type(self).__name__, self._key)
             return self._key
 
         fileno = self._file.fileno()
 
+        logger.debug("%s computing key...", type(self).__name__)
         with self._reopen(mode='rb', encoding=None) as self._file:
             digester = hashlib.sha1()
             while True:
@@ -180,13 +199,20 @@ class WriteableStream:
         serialised_meta = pickle.dumps(meta)
         digester.update(serialised_meta)
         self._key = digester.hexdigest()
+        logger.debug("%s key computed as %r", type(self).__name__, self._key)
 
         if self._key not in self._keeper:
+            logging.debug(
+                "%s promoting temporary fileno %r to permanent",
+                type(self).__name__,
+                fileno
+            )
             self._keeper._storage.promote_temp(fileno, self._key)
             with self._keeper._storage.open_meta(self._key, 'w') as meta_file:
                 meta_file.write(serialised_meta)
         else:
             self._keeper._storage.remove_temp(fileno)
+        logger.debug("%s closed, returning key %r", type(self).__name__, self._key)
         return self._key
 
 
@@ -201,6 +227,7 @@ class Keeper(object):
     def __init__(self, dirpath):
         """Instantiate a Keeper store with a directory path.
         """
+        logger.debug("Creating %s with dirpath %s", type(self).__name__, dirpath)
         dirpath = Path(dirpath)
         self._storage = filestorage.FileStorage(dirpath)
 
@@ -215,10 +242,18 @@ class Keeper(object):
         which when closed, commits the data to this keeper. Only then is the
         key accessible through the key property of the returned object.
 
+        mime: The optional MIME type of the data.
+
         encoding: If encoding is None (the default) the returned file-like-
             object will only accept bytes objects. If the encoding is not None
             only strings will be accepted.
         """
+        logger.debug(
+            "%s adding stream with MIME type %r and encoding %r",
+            type(self).__name__,
+            mime,
+            encoding
+        )
         if not self._storage:
             raise KeeperClosed()
         return WriteableStream(self, mime, encoding, **kwargs)
@@ -233,7 +268,13 @@ class Keeper(object):
         Returns:
             A key for the data
         """
-        # TODO: If this method delegated to add_stream, we'd get renaming for free
+        logger.debug(
+            "%s adding data of length %r with MIME type %r and encoding %r",
+            type(self).__name__,
+            len(data),
+            mime,
+            encoding
+        )
         if not self._storage:
             raise KeeperClosed()
 
@@ -263,17 +304,30 @@ class Keeper(object):
         with self._storage.open_data(key, 'w') as data_file:
             data_file.write(data)
 
+        logger.debug(
+            "%s added data of length %r with key %r",
+            type(self).__name__,
+            len(data),
+            key
+        )
         return key
 
     def __contains__(self, key):
+        logging.debug("%s checking for membership of key %r", type(self).__name__, key)
         if not self._storage:
             raise KeeperClosed()
         try:
             with self._storage.open_meta(key):
-                return True
+                contained = True
         except (ValueError, FileNotFoundError):
-            return False
-
+            contained = False
+        logging.debug(
+            "%s %s key %r",
+            type(self).__name__,
+            "contains" if contained else "does not contain",
+            key
+        )
+        return contained
 
     def __iter__(self):
         if not self._storage:
@@ -292,12 +346,18 @@ class Keeper(object):
         Raises:
             KeyError: If the key is unknown.
         """
+        logger.debug("%s getting item with key %r", type(self).__name__, key)
         if not self._storage:
             raise KeeperClosed()
-        return Value(self, key)
+        try:
+            return Value(self, key)
+        except KeyError:
+            logger.debug("%s has not item with key %r", type(self).__name__, key)
+            raise
 
     def __delitem__(self, key):
         """Remove an item by its key"""
+        logger.debug("%s removing item with key %r", type(self).__name__, key)
         if not self._storage:
             raise KeeperClosed()
         if key not in self:
@@ -310,5 +370,6 @@ class Keeper(object):
         return sum(1 for _ in self)
 
     def close(self):
+        logger.debug("%s closing", type(self).__name__)
         self._storage.close()
         self._storage = None

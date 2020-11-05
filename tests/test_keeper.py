@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 import shutil
@@ -7,9 +8,17 @@ import warnings
 from keeper import Keeper
 
 
+logging.basicConfig(level=logging.DEBUG)
+console = logging.StreamHandler(sys.stdout)
+console.setLevel(logging.DEBUG)
+logging.getLogger().addHandler(console)
+
+
 class KeeperTests(unittest.TestCase):
 
     def setUp(self):
+        self.original_stream = console.stream
+        console.stream = sys.stdout
         self.keeper_root = 'testkeeper'
         shutil.rmtree(self.keeper_root, ignore_errors=True)
 
@@ -24,6 +33,7 @@ class KeeperTests(unittest.TestCase):
             shutil.rmtree(self.keeper_root)
         except FileNotFoundError:
             pass
+        console.stream = self.original_stream
 
     def test_create(self):
         pass
@@ -76,7 +86,8 @@ class KeeperTests(unittest.TestCase):
         self.assertEqual(value.meta.encoding, sys.getdefaultencoding())
 
     def test_unknown_key(self):
-        self.assertRaises(KeyError, lambda: self.keeper['hello'])
+        with self.assertRaises(KeyError):
+            _ = self.keeper['hello']
 
     def test_encoding(self):
         data = "søker sjåfør".encode('utf-16')
@@ -175,7 +186,8 @@ class KeeperTests(unittest.TestCase):
         self.assertNotIn(key, self.keeper)
 
     def test_remove_item_negative(self):
-        self.assertRaises(KeyError, lambda: self.keeper['2a206783b16f327a53555861331980835a0e059e'])
+        with self.assertRaises(KeyError):
+            _ = self.keeper['2a206783b16f327a53555861331980835a0e059e']
 
     def test_add_stream_in_context(self):
         with self.keeper.add_stream() as stream:
