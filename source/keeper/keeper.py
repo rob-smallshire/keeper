@@ -1,6 +1,10 @@
 import hashlib
 import pickle
 import sys
+import threading
+from concurrent.futures.thread import ThreadPoolExecutor
+from io import BufferedIOBase, BytesIO, StringIO
+from itertools import chain
 from pathlib import Path
 import logging
 
@@ -115,6 +119,174 @@ class Value:
         return self._keeper._storage.path(self._key)
 
 
+
+class PendingValue:
+    """Access to a value and its metadata.
+    """
+
+    def __init__(self, keeper, key):
+        self._keeper = keeper
+        self._key = key
+
+        try:
+            with self._keeper._storage.open_meta(self._key, 'rb') as meta_file:
+                self._meta = pickle.load(meta_file)
+        except FileNotFoundError:
+            raise KeyError(key)
+        try:
+            self._buffer = keeper._pending_buffers[key]
+        except KeyError:
+            raise KeyError(key)
+
+    @property
+    def meta(self) -> ValueMeta:
+        """The metadata associated with this value.
+
+        Returns:
+            The ValueMeta object corresponding to this value.
+        """
+        return self._meta
+
+    def as_bytes(self):
+        """Access the value as a bytes object.
+        """
+        return self._buffer.getvalue()
+
+    def as_file(self):
+        """Access the data as a read-only file-like object.
+        """
+        mode = 'rb' if self.meta.encoding is None else 'r'
+        # TODO: Mode
+        return self._buffer
+
+    def as_string(self):
+        """Return the data as a string.
+
+        The string is constructed from the underlying bytes data using the
+        encoding in self.meta.encoding or the default string encoding if the
+        former is None.
+        """
+        return self._buffer.decode(encoding=self.meta.encoding)
+
+    def __str__(self):
+        """Return the data as a string.
+
+       The string is constructed from the underlying bytes data using the
+       encoding in self.meta.encoding or the default string encoding if the
+       former is None.
+       """
+        return self.as_string()
+
+    def __len__(self):
+        """The length of the data in bytes (NOT characters).
+        """
+        return self._meta.length
+
+    @property
+    def path(self):
+        """Obtains a filesystem path to the resource.
+
+        Returns:
+            A path to the resource as a string or None.
+
+        Warning:
+            The file MUST NOT be modified through this path.
+        """
+        return "<memory>"
+
+
+class WriteableBufferedStream:
+
+    def __init__(self, keeper, mime, encoding, **kwargs):
+        logger.debug(
+            "Creating %s with MIME type %r and encoding %r",
+            type(self).__name__,
+            mime,
+            encoding
+        )
+        self._keeper = keeper
+        self._encoding = encoding
+        self._file = self._keeper._storage.open_temp('w+', encoding)
+        self._mime = mime
+        self._keywords = kwargs
+        self._key = None
+        self._file = BytesIO() if encoding is None else StringIO()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        self.close()
+        return False
+
+    @property
+    def mime(self):
+        return self._mime
+
+    @property
+    def encoding(self):
+        return self._encoding
+
+    @property
+    def key(self):
+        return self._key
+
+    def write(self, data):
+        self._file.write(data)
+
+    @property
+    def closed(self):
+        return self._key is not None
+
+    def __getattr__(self, item):
+        # Forward all other operations to the underlying file
+        if item == "_file":
+            raise AttributeError
+        try:
+            return getattr(self._file, item)
+        except KeyError:
+            raise AttributeError(item)
+
+    def close(self):
+        logger.debug("%s closing", type(self).__name__)
+        if self.closed:
+            logger.debug("%s already closed, returning key %r", type(self).__name__, self._key)
+            return self._key
+
+        digester = hashlib.sha1()
+        self._file.seek(0)
+        while True:
+            data = self._file.read(16 * 1024 * 1024)
+            if not data:
+                break
+            digester.update(data if isinstance(data, bytes) else data.encode(self.encoding))
+        length = self._file.tell()
+
+        meta = ValueMeta(length=length, mime=self._mime, encoding=self._encoding,
+                         **self._keywords)
+
+        serialised_meta = pickle.dumps(meta)
+        digester.update(serialised_meta)
+
+        self._key = digester.hexdigest()
+        logger.debug("%s key computed as %r", type(self).__name__, self._key)
+
+        if self._key not in self._keeper:
+            logging.debug(
+                "%s persisting buffered data with length %d bytes",
+                type(self).__name__,
+                length
+            )
+            self._keeper._enqueue_pending(self)
+            with self._keeper._storage.open_meta(self._key, 'w') as meta_file:
+                meta_file.write(serialised_meta)
+        else:
+            self._file.close()
+
+        logger.debug("%s closed, returning key %r", type(self).__name__, self._key)
+        return self._key
+
+
 class WriteableStream:
 
     def __init__(self, keeper, mime, encoding, **kwargs):
@@ -149,6 +321,13 @@ class WriteableStream:
     @property
     def key(self):
         return self._key
+
+    def write(self, data):
+        self._file.write(data)
+
+    @property
+    def closed(self):
+        return self._file.closed
 
     def __getattr__(self, item):
         # Forward all other operations to the underlying file
@@ -230,6 +409,9 @@ class Keeper(object):
         logger.debug("Creating %s with dirpath %s", type(self).__name__, dirpath)
         dirpath = Path(dirpath)
         self._storage = filestorage.FileStorage(dirpath)
+        self._pending_streams = {}  # key to WriteableBufferedStream
+        self._executor = ThreadPoolExecutor(max_workers=1)
+        self._pending_streams_lock = threading.RLock()
 
     def __enter__(self):
         return self
@@ -257,6 +439,32 @@ class Keeper(object):
         if not self._storage:
             raise KeeperClosed()
         return WriteableStream(self, mime, encoding, **kwargs)
+
+    def add_buffered_stream(self, mime=None, encoding=None, **kwargs):
+        logger.debug(
+            "%s adding stream with MIME type %r and encoding %r",
+            type(self).__name__,
+            mime,
+            encoding
+        )
+        if not self._storage:
+            raise KeeperClosed()
+        return WriteableBufferedStream(self, mime, encoding, **kwargs)
+
+    def _enqueue_pending(self, stream):
+        with self._pending_streams_lock:
+            self._pending_streams[stream.key] = stream
+        self._executor.submit(self._persist_pending_stream, stream.key)
+
+    def _persist_pending_stream(self, key):
+        with self._pending_streams_lock:
+            stream = self._pending_streams[key]
+        with self._storage.open_temp(encoding=stream.encoding) as tmp:
+            tmp.write(stream._file.getvalue())
+            fileno = tmp.fileno()
+        self._storage.promote_temp(fileno, stream.key)
+        with self._pending_streams_lock:
+            del self._pending_streams[key]
 
     def add(self, data, mime=None, encoding=None, **kwargs):
         """Adds data into the store.
@@ -314,6 +522,9 @@ class Keeper(object):
 
     def __contains__(self, key):
         logging.debug("%s checking for membership of key %r", type(self).__name__, key)
+        with self._pending_streams_lock:
+            if key in self._pending_streams:
+                return True
         if not self._storage:
             raise KeeperClosed()
         try:
@@ -332,7 +543,14 @@ class Keeper(object):
     def __iter__(self):
         if not self._storage:
             raise KeeperClosed()
-        yield from self._storage
+        with self._pending_streams_lock:
+            pending_keys = set(self._pending_streams.keys())
+        yield from pending_keys
+
+        for key in self._storage:
+            if key not in pending_keys:
+                yield key
+
 
     def __getitem__(self, key):
         """Retrieve data by its key.
@@ -347,6 +565,9 @@ class Keeper(object):
             KeyError: If the key is unknown.
         """
         logger.debug("%s getting item with key %r", type(self).__name__, key)
+        with self._pending_streams_lock:
+            if key in self._pending_streams:
+                return PendingValue(self, key)
         if not self._storage:
             raise KeeperClosed()
         try:
@@ -358,11 +579,19 @@ class Keeper(object):
     def __delitem__(self, key):
         """Remove an item by its key"""
         logger.debug("%s removing item with key %r", type(self).__name__, key)
+        found = False
+        with self._pending_streams_lock:
+            if key in self._pending_streams:
+                del self._pending_streams[key]
+                found = True
         if not self._storage:
             raise KeeperClosed()
-        if key not in self:
+        if key in self:
+            self._storage.remove(key)
+            found = True
+        if not found:
             raise KeyError(key)
-        self._storage.remove(key)
+
 
     def __len__(self):
         if not self._storage:
@@ -371,5 +600,7 @@ class Keeper(object):
 
     def close(self):
         logger.debug("%s closing", type(self).__name__)
+        self._executor.shutdown()
         self._storage.close()
         self._storage = None
+
