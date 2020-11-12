@@ -1,4 +1,9 @@
+import io
 import pickle
+import logging
+
+
+logger = logging.getLogger(__name__)
 
 
 class ValueMeta:
@@ -141,7 +146,8 @@ class PendingValue:
         """Access the data as a read-only file-like object.
         """
         mode = 'rb' if self.meta.encoding is None else 'r'
-        # TODO: Read-only wrapper for BytesIO
+        # TODO: Read-only wrapper for BytesIO. io.BufferedReader has a write
+        #       method, so isn't much help
         return self._buffer
 
     def as_string(self):
