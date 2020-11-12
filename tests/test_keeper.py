@@ -6,7 +6,7 @@ import unittest
 import warnings
 
 from keeper import Keeper
-from keeper.keeper import Value
+from keeper.values import Value
 
 logging.basicConfig(level=logging.DEBUG)
 console = logging.StreamHandler(sys.stdout)
