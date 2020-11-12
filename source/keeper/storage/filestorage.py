@@ -3,6 +3,8 @@ import os
 import shutil
 import uuid
 
+from atomicwrites import move_atomic
+
 META_EXTENSION = '.pickle'
 
 logger = logging.getLogger(__name__)
@@ -135,7 +137,7 @@ class FileStorage:
         data_path = self.path(key)
         dir_path = os.path.dirname(data_path)
         os.makedirs(dir_path, exist_ok=True)
-        os.rename(temporary_filepath, data_path)
+        move_atomic(temporary_filepath, data_path)
         logger.debug(
             "%s promoted temporary file %s to permanent by moving %s",
             type(self).__name__,
