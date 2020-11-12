@@ -342,8 +342,16 @@ class WriteableStream:
             logger.debug("%s already closed, returning key %r", type(self).__name__, self._key)
             return self._key
 
+        if not self._file.closed:
+            logger.debug("%s needs to close file %r", type(self).__name__, self._file.name)
+            self._file.flush()
+            os.fsync(self._file.fileno())
+            self._file.close()
+            logger.debug("%s flushed, fsynced, and closed file %r", type(self).__name__, self._file.name)
+
+        logger.debug("%s reopening %r", type(self).__name__, self._file.name)
         logger.debug("%s computing key...", type(self).__name__)
-        with self._reopen(mode='rb', encoding=None) as self._file:
+        with open(self._file.name, mode='rb', encoding=None) as self._file:
             digester = hashlib.sha1()
             while True:
                 data = self._file.read(16 * 1024 * 1024)
