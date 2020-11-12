@@ -453,6 +453,7 @@ class Keeper(object):
         with self._storage.open_temp(encoding=stream.encoding) as tmp:
             tmp.write(stream._file.getvalue())
             filepath = tmp.name
+            os.fsync(tmp.fileno())
         self._storage.promote_temp(filepath, stream.key)
         with self._pending_streams_lock:
             del self._pending_streams[key]
