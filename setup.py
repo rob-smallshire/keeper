@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-version = "0.97.1"
+version = "0.97.2"
 
 with open('README.rst', 'r') as readme:
     long_description = readme.read()
