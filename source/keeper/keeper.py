@@ -78,7 +78,6 @@ class Value:
         return self._keeper._storage.open_data(self._key, mode=mode,
                                                encoding=self.meta.encoding)
 
-
     def as_string(self):
         """Return the data as a string.
 
@@ -90,7 +89,6 @@ class Value:
                                     encoding=self.meta.encoding) as data_file:
             s = data_file.read()
         return s
-
 
     def __str__(self):
         """Return the data as a string.
@@ -117,7 +115,6 @@ class Value:
             The file MUST NOT be modified through this path.
         """
         return self._keeper._storage.path(self._key)
-
 
 
 class PendingValue:

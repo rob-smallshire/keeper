@@ -119,7 +119,7 @@ class FileStorage:
     def promote_temp(self, temporary_filepath, key):
         """
         Args:
-            filepath: The path to the temporary file.
+            temporary_filepath: The path to the temporary file.
             key: The key under which the contents of the temporary file
                 should be stored.
 
@@ -168,8 +168,10 @@ class FileStorage:
         return meta_file
 
     def path(self, key):
-        return os.path.join(self._data_root_path,
-            self._relative_key_path(key))
+        return os.path.join(
+            self._data_root_path,
+            self._relative_key_path(key)
+        )
 
     def open_data(self, key, mode='r', encoding=None):
         logger.debug(
