@@ -1,4 +1,5 @@
 import hashlib
+import os
 import pickle
 import sys
 import threading
@@ -324,7 +325,7 @@ class WriteableStream:
 
     @property
     def closed(self):
-        return self._file.closed
+        return self._key is not None
 
     def __getattr__(self, item):
         # Forward all other operations to the underlying file
@@ -334,23 +335,6 @@ class WriteableStream:
             return getattr(self._file, item)
         except KeyError:
             raise AttributeError(item)
-
-    def _reopen(self, mode, encoding):
-        name = self._file.name
-        logger.debug("%s reopening %r", type(self).__name__, name)
-        if not self._file.closed:
-            logger.debug("%s needs to close file %r", type(self).__name__, name)
-            self._file.close()
-            logger.debug("%s closed file %r", type(self).__name__, name)
-        f = open(name, mode=mode, encoding=encoding)
-        logger.debug(
-            "%s reopened %r in mode %r with encoding %r",
-            type(self).__name__,
-            name,
-            mode,
-            encoding
-        )
-        return f
 
     def close(self):
         logger.debug("%s closing", type(self).__name__)
@@ -372,21 +356,24 @@ class WriteableStream:
                          **self._keywords)
         serialised_meta = pickle.dumps(meta)
         digester.update(serialised_meta)
-        self._key = digester.hexdigest()
-        logger.debug("%s key computed as %r", type(self).__name__, self._key)
+        key = digester.hexdigest()
+        logger.debug("%s key computed as %r", type(self).__name__, key)
 
-        if self._key not in self._keeper:
+        if key not in self._keeper:
             logging.debug(
                 "%s promoting temporary file %s to permanent",
                 type(self).__name__,
                 self._file.name
             )
-            self._keeper._storage.promote_temp(self._file.name, self._key)
-            with self._keeper._storage.open_meta(self._key, 'w') as meta_file:
+            self._keeper._storage.promote_temp(self._file.name, key)
+            with self._keeper._storage.open_meta(key, 'w') as meta_file:
                 meta_file.write(serialised_meta)
+                meta_file.flush()
+                os.fsync(meta_file.fileno())
         else:
             self._keeper._storage.remove_temp(self._file.name)
-        logger.debug("%s closed, returning key %r", type(self).__name__, self._key)
+        logger.debug("%s closed, returning key %r", type(self).__name__, key)
+        self._key = key
         return self._key
 
 
