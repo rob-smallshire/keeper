@@ -1,8 +1,10 @@
+import contextlib
 import logging
 import os
 import shutil
 import uuid
 
+import atomicwrites
 from atomicwrites import move_atomic
 
 META_EXTENSION = '.pickle'
@@ -97,8 +99,8 @@ class FileStorage:
             self._relative_key_path(key) + META_EXTENSION
         )
 
-    def open_temp(self, mode='w', encoding=None):
-
+    @contextlib.contextmanager
+    def open_temp(self, mode="w", encoding=None):
         temp_filename = str(uuid.uuid4())
         temp_path = os.path.join(self._temp_root_path, temp_filename)
         if encoding is None and 'b' not in mode:
@@ -110,13 +112,33 @@ class FileStorage:
             mode,
             encoding
         )
-        temp_file = open(temp_path, mode=mode, encoding=encoding)
+        with open(temp_path, mode=mode, encoding=encoding) as temp_file:
+            logger.debug(
+                "%s opened temporary file with path %r",
+                type(self).__name__,
+                temp_file.name
+            )
+            yield temp_file
+            if not temp_file.closed:
+                temp_file.flush()
+                logger.debug(
+                    "%s fsynced temporary file with path %r",
+                    type(self).__name__,
+                    temp_file.name
+                )
+                atomicwrites._proper_fsync(temp_file.fileno())
         logger.debug(
-            "%s opened temporary file with path %r",
+            "%s closed temporary file with path %r",
             type(self).__name__,
             temp_file.name
         )
-        return temp_file
+        parent_dirpath = os.path.abspath(os.path.join(temp_path, os.pardir))
+        atomicwrites._sync_directory(parent_dirpath)
+        logger.debug(
+            "%s fsynced direction with path %r",
+            type(self).__name__,
+            parent_dirpath
+        )
 
     def promote_temp(self, temporary_filepath, key):
         """
@@ -160,14 +182,18 @@ class FileStorage:
                 temporary_filepath
             )
 
+    @contextlib.contextmanager
     def open_meta(self, key, mode='r'):
         meta_path = self._meta_path(key)
         dir_path = os.path.dirname(meta_path)
         os.makedirs(dir_path, exist_ok=True)
         if 'b' not in mode:
             mode += 'b'
-        meta_file = open(meta_path, mode)
-        return meta_file
+        with open(meta_path, mode) as meta_file:
+            yield meta_file
+            if not meta_file.closed and ('w' in mode):
+                meta_file.flush()
+                atomicwrites._proper_fsync(meta_file.fileno())
 
     def path(self, key):
         return os.path.join(

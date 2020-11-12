@@ -1,3 +1,4 @@
+import contextlib
 import hashlib
 import os
 import pickle
@@ -297,7 +298,8 @@ class WriteableStream:
         )
         self._keeper = keeper
         self._encoding = encoding
-        self._file = self._keeper._storage.open_temp('w+', encoding)
+        self._stack = contextlib.ExitStack()
+        self._file = self._stack.enter_context(self._keeper._storage.open_temp('w+', encoding))
         self._mime = mime
         self._keywords = kwargs
         self._key = None
@@ -343,13 +345,8 @@ class WriteableStream:
             logger.debug("%s already closed, returning key %r", type(self).__name__, self._key)
             return self._key
 
-        if not self._file.closed:
-            logger.debug("%s needs to close file %r", type(self).__name__, self._file.name)
-            self._file.flush()
-            os.fsync(self._file.fileno())
-            self._file.close()
-            logger.debug("%s flushed, fsynced, and closed file %r", type(self).__name__, self._file.name)
-
+        self._stack.close()
+        assert self._file.closed
         logger.debug("%s reopening %r", type(self).__name__, self._file.name)
         logger.debug("%s computing key...", type(self).__name__)
         with open(self._file.name, mode='rb', encoding=None) as self._file:
@@ -377,8 +374,6 @@ class WriteableStream:
             self._keeper._storage.promote_temp(self._file.name, key)
             with self._keeper._storage.open_meta(key, 'w') as meta_file:
                 meta_file.write(serialised_meta)
-                meta_file.flush()
-                os.fsync(meta_file.fileno())
         else:
             self._keeper._storage.remove_temp(self._file.name)
         logger.debug("%s closed, returning key %r", type(self).__name__, key)

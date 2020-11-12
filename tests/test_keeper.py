@@ -6,7 +6,7 @@ import unittest
 import warnings
 
 from keeper import Keeper
-
+from keeper.keeper import Value
 
 logging.basicConfig(level=logging.DEBUG)
 console = logging.StreamHandler(sys.stdout)
@@ -322,7 +322,15 @@ class BufferedStreamTests(unittest.TestCase):
         print(type(value))
         print(len(value.as_bytes()))
         self.assertIn(stream.key, self.keeper)
-
+        while True:
+            value = self.keeper[stream.key]
+            print(type(value))
+            print(len(value.as_bytes()))
+            if isinstance(value, Value):
+                break
+        print(type(value))
+        print(len(value.as_bytes()))
+        self.assertIn(stream.key, self.keeper)
 
     def test_key_in_none_before_close(self):
         stream = self.keeper.add_buffered_stream()
