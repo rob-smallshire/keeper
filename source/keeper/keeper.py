@@ -361,8 +361,6 @@ class WriteableStream:
             logger.debug("%s already closed, returning key %r", type(self).__name__, self._key)
             return self._key
 
-        fileno = self._file.fileno()
-
         logger.debug("%s computing key...", type(self).__name__)
         with self._reopen(mode='rb', encoding=None) as self._file:
             digester = hashlib.sha1()
@@ -382,15 +380,15 @@ class WriteableStream:
 
         if self._key not in self._keeper:
             logging.debug(
-                "%s promoting temporary fileno %r to permanent",
+                "%s promoting temporary file %s to permanent",
                 type(self).__name__,
-                fileno
+                self._file.name
             )
-            self._keeper._storage.promote_temp(fileno, self._key)
+            self._keeper._storage.promote_temp(self._file.name, self._key)
             with self._keeper._storage.open_meta(self._key, 'w') as meta_file:
                 meta_file.write(serialised_meta)
         else:
-            self._keeper._storage.remove_temp(fileno)
+            self._keeper._storage.remove_temp(self._file.name)
         logger.debug("%s closed, returning key %r", type(self).__name__, self._key)
         return self._key
 
@@ -461,8 +459,8 @@ class Keeper(object):
             stream = self._pending_streams[key]
         with self._storage.open_temp(encoding=stream.encoding) as tmp:
             tmp.write(stream._file.getvalue())
-            fileno = tmp.fileno()
-        self._storage.promote_temp(fileno, stream.key)
+            filepath = tmp.name
+        self._storage.promote_temp(filepath, stream.key)
         with self._pending_streams_lock:
             del self._pending_streams[key]
 

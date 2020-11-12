@@ -47,8 +47,6 @@ class FileStorage:
 
         self._directory_path = dirpath
 
-        self._temp_files = {}
-
     @staticmethod
     def _ensure_directory_exists(dirpath):
         """Ensure that a directory exists.
@@ -111,53 +109,53 @@ class FileStorage:
             encoding
         )
         temp_file = open(temp_path, mode=mode, encoding=encoding)
-        fileno = temp_file.fileno()
-        self._temp_files[fileno] = temp_path
         logger.debug(
-            "%s opened temporary file with fileno %r",
+            "%s opened temporary file with path %r",
             type(self).__name__,
-            fileno
+            temp_file.name
         )
         return temp_file
 
-    def promote_temp(self, fileno, key):
+    def promote_temp(self, temporary_filepath, key):
+        """
+        Args:
+            filepath: The path to the temporary file.
+            key: The key under which the contents of the temporary file
+                should be stored.
+
+        Raises:
+            FileNotFoundError: If temporary_filepath does not exist.
+        """
         logger.debug(
-            "%s promoting temporary file with fileno %r and key %r",
+            "%s promoting temporary file with %s and key %r",
             type(self).__name__,
-            fileno,
+            temporary_filepath,
             key,
         )
-        if fileno not in self._temp_files:
-            raise ValueError(f"No such fileno {fileno}")
         data_path = self.path(key)
         dir_path = os.path.dirname(data_path)
         os.makedirs(dir_path, exist_ok=True)
-        temporary_filepath = self._temp_files.pop(fileno)
         os.rename(temporary_filepath, data_path)
         logger.debug(
-            "%s promoted temporary fileno %r to permanent by moving %r to %r",
+            "%s promoted temporary file %s to permanent by moving %s",
             type(self).__name__,
-            fileno,
             temporary_filepath,
             data_path
         )
 
-    def remove_temp(self, fileno):
+    def remove_temp(self, temporary_filepath):
         logger.debug(
-            "%s removing temporary file with fileno %r",
+            "%s removing temporary file %s",
             type(self).__name__,
-            fileno
+            temporary_filepath
         )
-        if fileno not in self._temp_files:
-            raise ValueError(f"No such fileno {fileno}")
-        filepath = self._temp_files.pop(fileno)
         try:
-            os.remove(filepath)
+            os.remove(temporary_filepath)
         except FileNotFoundError:
             logger.debug(
                 "%s could not find %r to remove it",
                 type(self).__name__,
-                filepath
+                temporary_filepath
             )
 
     def open_meta(self, key, mode='r'):
