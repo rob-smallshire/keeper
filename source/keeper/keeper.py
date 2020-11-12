@@ -614,6 +614,10 @@ class Keeper(object):
 
     def close(self):
         logger.debug("%s closing", type(self).__name__)
+        logger.debug("%s draining %d pending streams", type(self).__name__, len(self._pending_streams))
+        while len(self._pending_streams) > 0:
+            time.sleep(0.001)
+        logger.debug("%s drained pending streams", type(self).__name__)
         self._executor.shutdown()
         self._storage.close()
         self._storage = None
