@@ -132,13 +132,7 @@ class FileStorage:
             type(self).__name__,
             temp_file.name
         )
-        parent_dirpath = os.path.abspath(os.path.join(temp_path, os.pardir))
-        atomicwrites._sync_directory(parent_dirpath)
-        logger.debug(
-            "%s fsynced direction with path %r",
-            type(self).__name__,
-            parent_dirpath
-        )
+        self._sync_parent_directory(temp_path)
 
     def promote_temp(self, temporary_filepath, key):
         """
@@ -184,16 +178,17 @@ class FileStorage:
 
     @contextlib.contextmanager
     def open_meta(self, key, mode='r'):
-        meta_path = self._meta_path(key)
-        dir_path = os.path.dirname(meta_path)
+        meta_filepath = self._meta_path(key)
+        dir_path = os.path.dirname(meta_filepath)
         os.makedirs(dir_path, exist_ok=True)
         if 'b' not in mode:
             mode += 'b'
-        with open(meta_path, mode) as meta_file:
+        with open(meta_filepath, mode) as meta_file:
             yield meta_file
             if not meta_file.closed and ('w' in mode):
                 meta_file.flush()
                 atomicwrites._proper_fsync(meta_file.fileno())
+                self._sync_parent_directory(meta_filepath)
 
     def path(self, key):
         return os.path.join(
@@ -201,6 +196,7 @@ class FileStorage:
             self._relative_key_path(key)
         )
 
+    @contextlib.contextmanager
     def open_data(self, key, mode='r', encoding=None):
         logger.debug(
             "%s opening data file for key %r with mode %r and encoding %r",
@@ -215,13 +211,17 @@ class FileStorage:
         os.makedirs(dir_path, exist_ok=True)
         if encoding is None and 'b' not in mode:
             mode += 'b'
-        datafile = open(data_filepath, mode=mode, encoding=encoding)
-        logger.debug(
-            "%s opened data file with path %r",
-            type(self).__name__,
-            data_filepath
-        )
-        return datafile
+        with open(data_filepath, mode=mode, encoding=encoding) as datafile:
+            logger.debug(
+                "%s opened data file with path %r",
+                type(self).__name__,
+                data_filepath
+            )
+            yield datafile
+            if not datafile.closed and ('w' in mode):
+                datafile.flush()
+                atomicwrites._proper_fsync(datafile.fileno())
+                self._sync_parent_directory(data_filepath)
 
     # TODO: At some point we should make the files read only
 
@@ -229,12 +229,20 @@ class FileStorage:
         logger.debug("%s removing key %r", type(self).__name__, key)
         meta_filepath = self._meta_path(key)
         os.remove(meta_filepath)
+        meta_parent_dirpath = os.path.abspath(os.path.join(meta_filepath, os.pardir))
+        atomicwrites._sync_directory(meta_parent_dirpath)
         logger.debug("%s removed %r", type(self).__name__, meta_filepath)
         data_filepath = self.path(key)
         os.remove(data_filepath)
+        self._sync_parent_directory(data_filepath)
         logger.debug("%s removed %r", type(self).__name__, data_filepath)
+
+    def _sync_parent_directory(self, path):
+        logger.debug("Syncing parent directory of %s", path)
+        data_parent_dirpath = os.path.abspath(os.path.join(path, os.pardir))
+        atomicwrites._sync_directory(data_parent_dirpath)
 
     def close(self):
         self._directory_path = None
-        logger.debug("%s closed")
+        logger.debug("%s closed", type(self).__name__)
 
