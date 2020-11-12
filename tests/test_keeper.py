@@ -313,6 +313,17 @@ class BufferedStreamTests(unittest.TestCase):
         stream.close()
         self.assertIn(stream.key, self.keeper)
 
+
+    def test_add_large_stream_with_close(self):
+        stream = self.keeper.add_buffered_stream()
+        stream.write(bytes(1000000000))
+        stream.close()
+        value = self.keeper[stream.key]
+        print(type(value))
+        print(len(value.as_bytes()))
+        self.assertIn(stream.key, self.keeper)
+
+
     def test_key_in_none_before_close(self):
         stream = self.keeper.add_buffered_stream()
         stream.write(b"The very hungry caterpillar")

@@ -4,8 +4,7 @@ import pickle
 import sys
 import threading
 from concurrent.futures.thread import ThreadPoolExecutor
-from io import BufferedIOBase, BytesIO, StringIO
-from itertools import chain
+from io import BytesIO, StringIO
 from pathlib import Path
 import logging
 
@@ -132,7 +131,8 @@ class PendingValue:
         except FileNotFoundError:
             raise KeyError(key)
         try:
-            self._buffer = keeper._pending_buffers[key]
+            with self._keeper._pending_streams_lock:
+                self._buffer = keeper._pending_streams[key]
         except KeyError:
             raise KeyError(key)
 
@@ -259,6 +259,7 @@ class WriteableBufferedStream:
                 break
             digester.update(data if isinstance(data, bytes) else data.encode(self.encoding))
         length = self._file.tell()
+        self._file.seek(0)
 
         meta = ValueMeta(length=length, mime=self._mime, encoding=self._encoding,
                          **self._keywords)
@@ -581,7 +582,6 @@ class Keeper(object):
             found = True
         if not found:
             raise KeyError(key)
-
 
     def __len__(self):
         if not self._storage:
