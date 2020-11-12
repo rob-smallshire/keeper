@@ -4,6 +4,7 @@ import os
 import pickle
 import sys
 import threading
+import time
 from concurrent.futures.thread import ThreadPoolExecutor
 from io import BytesIO, StringIO
 from pathlib import Path
@@ -155,7 +156,7 @@ class PendingValue:
         """Access the data as a read-only file-like object.
         """
         mode = 'rb' if self.meta.encoding is None else 'r'
-        # TODO: Mode
+        # TODO: Read-only wrapper for BytesIO
         return self._buffer
 
     def as_string(self):
@@ -387,6 +388,38 @@ class KeeperClosed(Exception):
         super().__init__("Keeper has been closed")
 
 
+class StreamMap:
+
+    def __init__(self):
+        self._lock = threading.RLock()
+        self._streams = {}
+
+    def __contains__(self, key):
+        with self._lock:
+            return key in self._streams
+
+    def __getitem__(self, key):
+        with self._lock:
+            return self._streams[key]
+
+    def add(self, stream):
+        with self._lock:
+            self._streams[stream.key] = stream
+
+    def discard(self, key):
+        with self._lock:
+            with contextlib.suppress(KeyError):
+                del self._streams[key]
+
+    def keys(self):
+        with self._lock:
+            return set(self._streams.keys())
+
+    def __len__(self):
+        with self._lock:
+            return len(self._streams)
+
+
 class Keeper(object):
 
     def __init__(self, dirpath):
@@ -395,9 +428,8 @@ class Keeper(object):
         logger.debug("Creating %s with dirpath %s", type(self).__name__, dirpath)
         dirpath = Path(dirpath)
         self._storage = filestorage.FileStorage(dirpath)
-        self._pending_streams = {}  # key to WriteableBufferedStream
         self._executor = ThreadPoolExecutor(max_workers=1)
-        self._pending_streams_lock = threading.RLock()
+        self._pending_streams = StreamMap()
 
     def __enter__(self):
         return self
@@ -438,20 +470,19 @@ class Keeper(object):
         return WriteableBufferedStream(self, mime, encoding, **kwargs)
 
     def _enqueue_pending(self, stream):
-        with self._pending_streams_lock:
-            self._pending_streams[stream.key] = stream
+        self._pending_streams.add(stream)
         self._executor.submit(self._persist_pending_stream, stream.key)
 
     def _persist_pending_stream(self, key):
-        with self._pending_streams_lock:
+        try:
             stream = self._pending_streams[key]
-        with self._storage.open_temp(encoding=stream.encoding) as tmp:
-            tmp.write(stream._file.getvalue())
-            filepath = tmp.name
-            os.fsync(tmp.fileno())
-        self._storage.promote_temp(filepath, stream.key)
-        with self._pending_streams_lock:
-            del self._pending_streams[key]
+            with self._storage.open_temp(encoding=stream.encoding) as tmp:
+                tmp.write(stream._file.getvalue())
+            self._storage.promote_temp(tmp.name, stream.key)
+        except Exception as e:
+            logger.error("Exception in _persist_pending_stream %s", e)
+        finally:
+            self._pending_streams.discard(key)
 
     def add(self, data, mime=None, encoding=None, **kwargs):
         """Adds data into the store.
@@ -509,9 +540,8 @@ class Keeper(object):
 
     def __contains__(self, key):
         logging.debug("%s checking for membership of key %r", type(self).__name__, key)
-        with self._pending_streams_lock:
-            if key in self._pending_streams:
-                return True
+        if key in self._pending_streams:
+            return True
         if not self._storage:
             raise KeeperClosed()
         try:
@@ -530,14 +560,14 @@ class Keeper(object):
     def __iter__(self):
         if not self._storage:
             raise KeeperClosed()
-        with self._pending_streams_lock:
-            pending_keys = set(self._pending_streams.keys())
+
+        pending_keys = self._pending_streams.keys()
+
         yield from pending_keys
 
         for key in self._storage:
             if key not in pending_keys:
                 yield key
-
 
     def __getitem__(self, key):
         """Retrieve data by its key.
@@ -552,9 +582,8 @@ class Keeper(object):
             KeyError: If the key is unknown.
         """
         logger.debug("%s getting item with key %r", type(self).__name__, key)
-        with self._pending_streams_lock:
-            if key in self._pending_streams:
-                return PendingValue(self, key)
+        if key in self._pending_streams:
+            return PendingValue(self, key)
         if not self._storage:
             raise KeeperClosed()
         try:
@@ -567,10 +596,9 @@ class Keeper(object):
         """Remove an item by its key"""
         logger.debug("%s removing item with key %r", type(self).__name__, key)
         found = False
-        with self._pending_streams_lock:
-            if key in self._pending_streams:
-                del self._pending_streams[key]
-                found = True
+        if key in self._pending_streams:
+            self._pending_streams.discard(key)
+            found = True
         if not self._storage:
             raise KeeperClosed()
         if key in self:
