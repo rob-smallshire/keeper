@@ -22,12 +22,24 @@ class KeeperClosed(Exception):
 
 class Keeper(object):
 
-    def __init__(self, dirpath):
+    def __init__(self, path, storage_factory=None):
         """Instantiate a Keeper store with a directory path.
+
+        Args:
+            path: A location for the keeper store. This will be passes as an
+                argument to the storage_factory. The type of the path argument
+                can be anything accepted by the storage factory.
+
+            storage_factory: A callable which returns a storage backet. It should
+                accept a single argument, which will be the path argument. If
+                unspecified or None, the default storage factory FileStorage will
+                be used.
         """
-        logger.debug("Creating %s with dirpath %s", type(self).__name__, dirpath)
-        dirpath = Path(dirpath)
-        self._storage = filestorage.FileStorage(dirpath)
+
+        logger.debug("Creating %s with pagh %s", type(self).__name__, path)
+        if storage_factory is None:
+            storage_factory = filestorage.FileStorage
+        self._storage = storage_factory(path)
         self._executor = ThreadPoolExecutor(max_workers=1)
         self._pending_streams = StreamMap()
 
