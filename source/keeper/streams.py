@@ -104,7 +104,7 @@ class WriteableBufferedStream:
         return self._key
 
 
-class WriteableStream:
+class WriteableBinaryStream:
 
     def __init__(self, keeper, mime, encoding, **kwargs):
         logger.debug(
@@ -116,7 +116,7 @@ class WriteableStream:
         self._keeper = keeper
         self._encoding = encoding
         self._stack = contextlib.ExitStack()
-        self._file = self._stack.enter_context(self._keeper._storage.open_temp('w+', encoding))
+        self._file = self._stack.enter_context(self._keeper._storage.create_temp())
         self._mime = mime
         self._keywords = kwargs
         self._key = None

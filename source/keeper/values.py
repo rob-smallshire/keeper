@@ -58,9 +58,8 @@ class Value:
     def as_bytes(self):
         """Access the value as a bytes object.
         """
-        with self._keeper._storage.open_data(self._key, 'rb') as data_file:
+        with self._keeper._storage.openin_data(self._key) as data_file:
             data = data_file.read()
-
         return data
 
     def as_file(self):
@@ -77,9 +76,8 @@ class Value:
         encoding in self.meta.encoding or the default string encoding if the
         former is None.
         """
-        with self._keeper._storage.open_data(self._key, mode='r',
-                                    encoding=self.meta.encoding) as data_file:
-            s = data_file.read()
+        with self._keeper._storage.openin_data(self._key) as data_file:
+            s = data_file.read().decode(encoding=self.meta.encoding)
         return s
 
     def __str__(self):

@@ -1,14 +1,11 @@
 import hashlib
 import pickle
 import sys
-import time
-from concurrent.futures.thread import ThreadPoolExecutor
-from pathlib import Path
+from collections import Mapping
 import logging
 
-from keeper.streams import WriteableBufferedStream, WriteableStream, StreamMap
-from keeper.values import ValueMeta, Value, PendingValue
-from .storage import filestorage
+from keeper.streams import WriteableBinaryStream
+from keeper.values import ValueMeta, Value
 
 
 logger = logging.getLogger(__name__)
@@ -20,28 +17,22 @@ class KeeperClosed(Exception):
         super().__init__(f"{type(Keeper).__name__} has been closed")
 
 
-class Keeper(object):
+class Keeper(Mapping):
 
-    def __init__(self, path, storage_factory=None):
-        """Instantiate a Keeper store with a directory path.
+    def __init__(self, storage):
+        self._storage = storage
 
-        Args:
-            path: A location for the keeper store. This will be passes as an
-                argument to the storage_factory. The type of the path argument
-                can be anything accepted by the storage factory.
+    @property
+    def storage(self):
+        return self._storage
 
-            storage_factory: A callable which returns a storage backet. It should
-                accept a single argument, which will be the path argument. If
-                unspecified or None, the default storage factory FileStorage will
-                be used.
-        """
+    @property
+    def closed(self):
+        return self._storage is None
 
-        logger.debug("Creating %s with pagh %s", type(self).__name__, path)
-        if storage_factory is None:
-            storage_factory = filestorage.FileStorage
-        self._storage = storage_factory(path)
-        self._executor = ThreadPoolExecutor(max_workers=1)
-        self._pending_streams = StreamMap()
+    def close(self):
+        self._storage = None
+        logger.debug("%s closing", type(self).__name__)
 
     def __enter__(self):
         return self
@@ -66,35 +57,9 @@ class Keeper(object):
             mime,
             encoding
         )
-        if not self._storage:
+        if self.closed:
             raise KeeperClosed()
-        return WriteableStream(self, mime, encoding, **kwargs)
-
-    def add_buffered_stream(self, mime=None, encoding=None, **kwargs):
-        logger.debug(
-            "%s adding stream with MIME type %r and encoding %r",
-            type(self).__name__,
-            mime,
-            encoding
-        )
-        if not self._storage:
-            raise KeeperClosed()
-        return WriteableBufferedStream(self, mime, encoding, **kwargs)
-
-    def _enqueue_pending(self, stream):
-        self._pending_streams.add(stream)
-        self._executor.submit(self._persist_pending_stream, stream.key)
-
-    def _persist_pending_stream(self, key):
-        try:
-            stream = self._pending_streams[key]
-            with self._storage.open_temp(encoding=stream.encoding) as tmp:
-                tmp.write(stream._file.getvalue())
-            self._storage.promote_temp(tmp.name, stream.key)
-        except Exception as e:
-            logger.error("Exception in _persist_pending_stream %s", e)
-        finally:
-            self._pending_streams.discard(key)
+        return WriteableBinaryStream(self, mime, encoding, **kwargs)
 
     def add(self, data, mime=None, encoding=None, **kwargs):
         """Adds data into the store.
@@ -113,7 +78,7 @@ class Keeper(object):
             mime,
             encoding
         )
-        if not self._storage:
+        if self.closed:
             raise KeeperClosed()
 
         if isinstance(data, str):
@@ -139,7 +104,7 @@ class Keeper(object):
         with self._storage.open_meta(key, 'w') as meta_file:
             meta_file.write(serialised_meta)
 
-        with self._storage.open_data(key, 'w') as data_file:
+        with self._storage.openout_data(key) as data_file:
             data_file.write(data)
 
         logger.debug(
@@ -152,8 +117,6 @@ class Keeper(object):
 
     def __contains__(self, key):
         logging.debug("%s checking for membership of key %r", type(self).__name__, key)
-        if key in self._pending_streams:
-            return True
         if not self._storage:
             raise KeeperClosed()
         try:
@@ -173,13 +136,7 @@ class Keeper(object):
         if not self._storage:
             raise KeeperClosed()
 
-        pending_keys = self._pending_streams.keys()
-
-        yield from pending_keys
-
-        for key in self._storage:
-            if key not in pending_keys:
-                yield key
+        yield from self._storage
 
     def __getitem__(self, key):
         """Retrieve data by its key.
@@ -194,9 +151,7 @@ class Keeper(object):
             KeyError: If the key is unknown.
         """
         logger.debug("%s getting item with key %r", type(self).__name__, key)
-        if key in self._pending_streams:
-            return PendingValue(self, key)
-        if not self._storage:
+        if self.closed:
             raise KeeperClosed()
         try:
             return Value(self, key)
@@ -207,30 +162,15 @@ class Keeper(object):
     def __delitem__(self, key):
         """Remove an item by its key"""
         logger.debug("%s removing item with key %r", type(self).__name__, key)
-        found = False
-        if key in self._pending_streams:
-            self._pending_streams.discard(key)
-            found = True
         if not self._storage:
             raise KeeperClosed()
         if key in self:
-            self._storage.remove(key)
-            found = True
-        if not found:
-            raise KeyError(key)
+            return self._storage.remove(key)
+        raise KeyError(key)
 
     def __len__(self):
-        if not self._storage:
+        if self.closed:
             raise KeeperClosed()
         return sum(1 for _ in self)
 
-    def close(self):
-        logger.debug("%s closing", type(self).__name__)
-        logger.debug("%s draining %d pending streams", type(self).__name__, len(self._pending_streams))
-        while len(self._pending_streams) > 0:
-            time.sleep(0.001)
-        logger.debug("%s drained pending streams", type(self).__name__)
-        self._executor.shutdown()
-        self._storage.close()
-        self._storage = None
 
