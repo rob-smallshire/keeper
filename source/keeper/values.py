@@ -104,7 +104,7 @@ class Value:
         Warning:
             The file MUST NOT be modified through this path.
         """
-        return self._keeper._storage.path(self._key)
+        return self._keeper._storage._data_path(self._key)
 
 
 class PendingValue:

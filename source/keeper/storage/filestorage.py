@@ -9,6 +9,7 @@ import atomicwrites
 from atomicwrites import move_atomic
 
 from keeper.storage.storage import Storage
+from keeper.storage.streams import WriteOnlyStream, ReadOnlyStream
 
 META_EXTENSION = '.pickle'
 
@@ -80,9 +81,9 @@ class FileStorage(Storage):
         return self._meta_root_path / self._relative_key_path(key).with_suffix(META_EXTENSION)
 
     @contextlib.contextmanager
-    def create_temp(self):
-        temp_filename = str(uuid.uuid4())
-        temp_path = self._temp_root_path / temp_filename
+    def openout_temp(self):
+        handle = str(uuid.uuid4())
+        temp_path = self._temp_path(handle)
         logger.debug(
             "%s creating temporary file %r",
             type(self).__name__,
@@ -94,7 +95,9 @@ class FileStorage(Storage):
                 type(self).__name__,
                 temp_file.name
             )
-            yield temp_file
+            stream = WriteOnlyStream(temp_file, name=handle)
+            yield stream
+            stream.close()
             if not temp_file.closed:
                 temp_file.flush()
                 logger.debug(
@@ -110,10 +113,31 @@ class FileStorage(Storage):
         )
         self._sync_parent_directory(temp_path)
 
-    def promote_temp(self, name, key):
+    @contextlib.contextmanager
+    def openin_temp(self, handle):
+        temp_path = self._temp_path(handle)
+        logger.debug(
+            "%s opening temporary file %r for read",
+            type(self).__name__,
+            temp_path,
+        )
+        with open(temp_path, mode="rb") as temp_file:
+            stream = ReadOnlyStream(temp_file, name=handle)
+            yield stream
+            stream.close()
+        logger.debug(
+            "%s closed temporary file with path %r",
+            type(self).__name__,
+            temp_file.name
+        )
+
+    def _temp_path(self, handle):
+        return self._temp_root_path / handle
+
+    def promote_temp(self, handle, key):
         """
         Args:
-            name: The name of the temporary.
+            handle: The name of the temporary.
             key: The key under which the contents of the temporary file
                 should be stored.
 
@@ -123,35 +147,36 @@ class FileStorage(Storage):
         logger.debug(
             "%s promoting temporary file with name %s and key %r",
             type(self).__name__,
-            name,
+            handle,
             key,
         )
-        data_path = self.path(key)
+        temp_path = self._temp_path(handle)
+        data_path = self._data_path(key)
         data_path.parent.mkdir(parents=True, exist_ok=True)
-        move_atomic(name, data_path)
+        move_atomic(temp_path, data_path)
         logger.debug(
             "%s promoted temporary file %s to permanent by moving %s",
             type(self).__name__,
-            name,
+            temp_path,
             data_path
         )
 
-    def remove_temp(self, name):
-        path = Path(name)
+    def remove_temp(self, handle):
+        temp_path = self._temp_path(handle)
         logger.debug(
             "%s removing temporary file %s",
             type(self).__name__,
-            name
+            handle
         )
         try:
-            path.unlink()
+            temp_path.unlink()
         except FileNotFoundError:
             logger.debug(
                 "%s could not find %r to remove it",
                 type(self).__name__,
-                name
+                handle
             )
-            raise ValueError("Could not remove temp with name {name!r}")
+            raise ValueError(f"Could not remove temp with handle {handle!r}")
 
     @contextlib.contextmanager
     def open_meta(self, key, mode='r'):
@@ -167,7 +192,7 @@ class FileStorage(Storage):
                 atomicwrites._proper_fsync(meta_file.fileno())
                 self._sync_parent_directory(meta_filepath)
 
-    def path(self, key) -> Path:
+    def _data_path(self, key) -> Path:
         return self._data_root_path / self._relative_key_path(key)
 
     @contextlib.contextmanager
@@ -177,7 +202,7 @@ class FileStorage(Storage):
             type(self).__name__,
             key,
         )
-        data_filepath = self.path(key)
+        data_filepath = self._data_path(key)
         data_filepath.parent.mkdir(parents=True, exist_ok=True)
         with atomicwrites.atomic_write(data_filepath, mode="wb") as datafile:
             yield datafile
@@ -189,7 +214,7 @@ class FileStorage(Storage):
             type(self).__name__,
             key,
         )
-        data_filepath = self.path(key)
+        data_filepath = self._data_path(key)
         with open(data_filepath, mode="rb") as datafile:
             yield datafile
 
@@ -199,7 +224,7 @@ class FileStorage(Storage):
         meta_filepath.unlink(missing_ok=True)
         self._sync_parent_directory(meta_filepath)
 
-        data_filepath = self.path(key)
+        data_filepath = self._data_path(key)
         data_filepath.unlink(missing_ok=True)
         self._sync_parent_directory(data_filepath)
         logger.debug("%s removed %r", type(self).__name__, data_filepath)

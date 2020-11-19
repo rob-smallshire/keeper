@@ -116,7 +116,7 @@ class WriteableBinaryStream:
         self._keeper = keeper
         self._encoding = encoding
         self._stack = contextlib.ExitStack()
-        self._file = self._stack.enter_context(self._keeper._storage.create_temp())
+        self._file = self._stack.enter_context(self._keeper._storage.openout_temp())
         self._mime = mime
         self._keywords = kwargs
         self._key = None
@@ -147,14 +147,14 @@ class WriteableBinaryStream:
     def closed(self):
         return self._key is not None
 
-    def __getattr__(self, item):
-        # Forward all other operations to the underlying file
-        if item == "_file":
-            raise AttributeError
-        try:
-            return getattr(self._file, item)
-        except KeyError:
-            raise AttributeError(item)
+    # def __getattr__(self, item):
+    #     # Forward all other operations to the underlying file
+    #     if item == "_file":
+    #         raise AttributeError
+    #     try:
+    #         return getattr(self._file, item)
+    #     except KeyError:
+    #         raise AttributeError(item)
 
     def close(self):
         logger.debug("%s closing", type(self).__name__)
@@ -166,7 +166,10 @@ class WriteableBinaryStream:
         assert self._file.closed
         logger.debug("%s reopening %r", type(self).__name__, self._file.name)
         logger.debug("%s computing key...", type(self).__name__)
-        with open(self._file.name, mode='rb', encoding=None) as self._file:
+
+        handle = self._file.name
+
+        with self._keeper._storage.openin_temp(handle) as self._file:
             digester = hashlib.sha1()
             while True:
                 data = self._file.read(16 * 1024 * 1024)

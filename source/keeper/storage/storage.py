@@ -15,7 +15,11 @@ class Storage(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def create_temp(self):
+    def openout_temp(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def openin_temp(self, handle):
         raise NotImplementedError
 
     @abstractmethod
