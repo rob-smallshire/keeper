@@ -3,7 +3,6 @@ import os
 import sys
 import shutil
 import unittest
-import warnings
 
 from keeper import Keeper
 from keeper.storage.filestorage import FileStorage
