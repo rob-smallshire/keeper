@@ -67,8 +67,7 @@ class FileStorage(Storage):
         path_components.append(key[self._levels:])
         return Path(*path_components)
 
-    #noinspection PyTypeChecker
-    def __iter__(self):
+    def keys(self):
         for dirpath, dirnames, filenames in os.walk(self._meta_root_path):
             prefix_dirpath = dirpath[len(str(self._meta_root_path)):]
             prefix = ''.join(prefix_dirpath.split(os.sep))
@@ -178,18 +177,19 @@ class FileStorage(Storage):
             raise ValueError(f"Could not remove temp with handle {handle!r}")
 
     @contextlib.contextmanager
-    def open_meta(self, key, mode='r'):
+    def openout_meta(self, key):
         meta_filepath = self._meta_path(key)
-        dir_path = os.path.dirname(meta_filepath)
-        os.makedirs(dir_path, exist_ok=True)
-        if 'b' not in mode:
-            mode += 'b'
-        with open(meta_filepath, mode) as meta_file:
-            yield meta_file
-            if not meta_file.closed and ('w' in mode):
-                meta_file.flush()
-                atomicwrites._proper_fsync(meta_file.fileno())
-                self._sync_parent_directory(meta_filepath)
+        meta_filepath.parent.mkdir(parents=True, exist_ok=True)
+        with atomicwrites.atomic_write(meta_filepath, mode="wb") as meta_file:
+            with WriteOnlyStream(meta_file, name=key) as stream:
+                yield stream
+
+    @contextlib.contextmanager
+    def openin_meta(self, key):
+        meta_filepath = self._meta_path(key)
+        with open(meta_filepath, "rb") as meta_file:
+            with ReadOnlyStream(meta_file, name=key) as stream:
+                yield stream
 
     def _data_path(self, key) -> Path:
         return self._data_root_path / self._relative_key_path(key)
@@ -235,3 +235,14 @@ class FileStorage(Storage):
     def close(self):
         self._root_dirpath = None
         logger.debug("%s closed", type(self).__name__)
+
+    @property
+    def closed(self):
+        return self._root_dirpath is None
+
+    @property
+    def root_dirpath(self):
+        return self._root_dirpath
+
+    def __repr__(self):
+        return f"{type(self).__name__}(root_dirpath={self.root_dirpath}, levels={self._levels})"

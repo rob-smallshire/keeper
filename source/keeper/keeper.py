@@ -7,11 +7,12 @@ import logging
 from keeper.streams import WriteableBinaryStream
 from keeper.values import ValueMeta, Value
 
+DEFAULT_ENCODING = "utf-8"
 
 logger = logging.getLogger(__name__)
 
 
-class KeeperClosed(Exception):
+class KeeperClosed(ValueError):
 
     def __init__(self):
         super().__init__(f"{type(Keeper).__name__} has been closed")
@@ -24,6 +25,8 @@ class Keeper(Mapping):
 
     @property
     def storage(self):
+        if self.closed:
+            raise KeeperClosed()
         return self._storage
 
     @property
@@ -40,7 +43,7 @@ class Keeper(Mapping):
     def __exit__(self, exception_type, exception_value, traceback):
         self.close()
 
-    def add_stream(self, mime=None, encoding=None, **kwargs):
+    def add_stream(self, mime=None, encoding=None, **meta):
         """Returns an open, writable file-like-object and context manager
         which when closed, commits the data to this keeper. Only then is the
         key accessible through the key property of the returned object.
@@ -59,9 +62,9 @@ class Keeper(Mapping):
         )
         if self.closed:
             raise KeeperClosed()
-        return WriteableBinaryStream(self, mime, encoding, **kwargs)
+        return WriteableBinaryStream(self, mime, encoding, **meta)
 
-    def add(self, data, mime=None, encoding=None, **kwargs):
+    def add(self, data, mime=None, encoding=None, **meta):
         """Adds data into the store.
 
         Args:
@@ -78,49 +81,22 @@ class Keeper(Mapping):
             mime,
             encoding
         )
-        if self.closed:
-            raise KeeperClosed()
 
         if isinstance(data, str):
-            encoding = encoding or sys.getdefaultencoding()
-            if encoding != sys.getdefaultencoding():
-                raise ValueError("Strings must use default encoding.")
-            data = data.encode()
+            encoding = encoding or DEFAULT_ENCODING
+            data = data.encode(encoding)
 
         if not isinstance(data, bytes):
             raise TypeError("data type must be bytes or str")
 
-        meta = ValueMeta(length=len(data), mime=mime, encoding=encoding, **kwargs)
-        serialised_meta = pickle.dumps(meta)
-
-        digester = hashlib.sha1()
-        digester.update(data)
-        digester.update(serialised_meta)
-        key = digester.hexdigest()
-
-        if key in self:
-            return key
-
-        with self._storage.open_meta(key, 'w') as meta_file:
-            meta_file.write(serialised_meta)
-
-        with self._storage.openout_data(key) as data_file:
-            data_file.write(data)
-
-        logger.debug(
-            "%s added data of length %r with key %r",
-            type(self).__name__,
-            len(data),
-            key
-        )
-        return key
+        with self.add_stream(mime, encoding=encoding, **meta) as stream:
+            stream.write(data)
+        return stream.key
 
     def __contains__(self, key):
         logging.debug("%s checking for membership of key %r", type(self).__name__, key)
-        if not self._storage:
-            raise KeeperClosed()
         try:
-            with self._storage.open_meta(key):
+            with self.storage.openin_meta(key):
                 contained = True
         except (ValueError, FileNotFoundError):
             contained = False
@@ -133,10 +109,9 @@ class Keeper(Mapping):
         return contained
 
     def __iter__(self):
-        if not self._storage:
-            raise KeeperClosed()
-
-        yield from self._storage
+        """Obtain an iterator over all keys
+        """
+        yield from self.storage.keys()
 
     def __getitem__(self, key):
         """Retrieve data by its key.
@@ -162,15 +137,11 @@ class Keeper(Mapping):
     def __delitem__(self, key):
         """Remove an item by its key"""
         logger.debug("%s removing item with key %r", type(self).__name__, key)
-        if not self._storage:
-            raise KeeperClosed()
         if key in self:
-            return self._storage.remove(key)
+            return self.storage.remove(key)
         raise KeyError(key)
 
     def __len__(self):
-        if self.closed:
-            raise KeeperClosed()
         return sum(1 for _ in self)
 
 

@@ -4,7 +4,17 @@ from abc import ABC, abstractmethod
 class Storage(ABC):
 
     @abstractmethod
-    def open_meta(self, key, mode):
+    def keys(self):
+        """An iterator over all keys
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def openout_meta(self, key):
+        raise NotImplementedError
+
+    @abstractmethod
+    def openin_meta(self, key):
         raise NotImplementedError
 
     @abstractmethod
@@ -32,4 +42,13 @@ class Storage(ABC):
 
     @abstractmethod
     def remove(self, key):
+        raise NotImplementedError
+
+    @abstractmethod
+    def close(self):
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def closed(self):
         raise NotImplementedError
