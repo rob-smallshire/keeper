@@ -41,7 +41,7 @@ class Storage(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def remove(self, key):
+    def discard(self, key):
         raise NotImplementedError
 
     @abstractmethod

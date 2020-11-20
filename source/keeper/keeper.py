@@ -103,7 +103,7 @@ class Keeper(Mapping):
         try:
             with self.storage.openin_meta(key):
                 contained = True
-        except (ValueError, FileNotFoundError):
+        except KeyError:
             contained = False
         logging.debug(
             "%s %s key %r",
@@ -143,7 +143,7 @@ class Keeper(Mapping):
         """Remove an item by its key"""
         logger.debug("%s removing item with key %r", type(self).__name__, key)
         if key in self:
-            return self.storage.remove(key)
+            return self.storage.discard(key)
         raise KeyError(key)
 
     def __len__(self):

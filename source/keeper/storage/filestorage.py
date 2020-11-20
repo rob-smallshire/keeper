@@ -119,9 +119,12 @@ class FileStorage(Storage):
             type(self).__name__,
             temp_path,
         )
-        with open(temp_path, mode="rb") as temp_file:
-            with ReadOnlyStream(temp_file, name=handle) as stream:
-                yield stream
+        try:
+            with open(temp_path, mode="rb") as temp_file:
+                with ReadOnlyStream(temp_file, name=handle) as stream:
+                    yield stream
+        except FileNotFoundError:
+            raise KeyError(handle)
 
         logger.debug(
             "%s closed temporary file with path %r",
@@ -140,7 +143,7 @@ class FileStorage(Storage):
                 should be stored.
 
         Raises:
-            ValueError: If name does not exist.
+            ValueError: If handle does not exist.
         """
         logger.debug(
             "%s promoting temporary file with name %s and key %r",
@@ -151,7 +154,10 @@ class FileStorage(Storage):
         temp_path = self._temp_path(handle)
         data_path = self._data_path(key)
         data_path.parent.mkdir(parents=True, exist_ok=True)
-        move_atomic(temp_path, data_path)
+        try:
+            move_atomic(temp_path, data_path)
+        except FileNotFoundError:
+            raise ValueError(handle)
         logger.debug(
             "%s promoted temporary file %s to permanent by moving %s",
             type(self).__name__,
@@ -187,9 +193,12 @@ class FileStorage(Storage):
     @contextlib.contextmanager
     def openin_meta(self, key):
         meta_filepath = self._meta_path(key)
-        with open(meta_filepath, "rb") as meta_file:
-            with ReadOnlyStream(meta_file, name=key) as stream:
-                yield stream
+        try:
+            with open(meta_filepath, "rb") as meta_file:
+                with ReadOnlyStream(meta_file, name=key) as stream:
+                    yield stream
+        except FileNotFoundError:
+            raise KeyError(key)
 
     def _data_path(self, key) -> Path:
         return self._data_root_path / self._relative_key_path(key)
@@ -214,10 +223,13 @@ class FileStorage(Storage):
             key,
         )
         data_filepath = self._data_path(key)
-        with open(data_filepath, mode="rb") as datafile:
-            yield datafile
+        try:
+            with open(data_filepath, mode="rb") as datafile:
+                yield datafile
+        except FileNotFoundError:
+            raise KeyError(key)
 
-    def remove(self, key):
+    def discard(self, key):
         logger.debug("%s removing key %r", type(self).__name__, key)
         meta_filepath = self._meta_path(key)
         meta_filepath.unlink(missing_ok=True)

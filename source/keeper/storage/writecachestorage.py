@@ -135,13 +135,13 @@ class WriteCacheStorage(Storage):
         with self._temp_buffer_lock:
             del self._temp_data[name]
 
-    def remove(self, key):
+    def discard(self, key):
         with self._data_lock:
             try:
                 del self._data[key]
             except KeyError:
                 pass
-        self.storage.remove(key)
+        self.storage.discard(key)
 
     def __repr__(self):
         return f"{type(self).__name__}(storage={self.storage})"
