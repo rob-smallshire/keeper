@@ -95,9 +95,8 @@ class FileStorage(Storage):
                 type(self).__name__,
                 temp_file.name
             )
-            stream = WriteOnlyStream(temp_file, name=handle)
-            yield stream
-            stream.close()
+            with WriteOnlyStream(temp_file, name=handle) as stream:
+                yield stream
             if not temp_file.closed:
                 temp_file.flush()
                 logger.debug(
@@ -122,9 +121,9 @@ class FileStorage(Storage):
             temp_path,
         )
         with open(temp_path, mode="rb") as temp_file:
-            stream = ReadOnlyStream(temp_file, name=handle)
-            yield stream
-            stream.close()
+            with ReadOnlyStream(temp_file, name=handle) as stream:
+                yield stream
+
         logger.debug(
             "%s closed temporary file with path %r",
             type(self).__name__,
