@@ -13,12 +13,15 @@ Installation
 Using Keeper
 ============
 
-Pass a directory path to a Keeper instance::
+Keeper is constructed with a Storage object. This example uses FileStorage::
 
-   from keeper import Keeper
+    from keeper import FileStorage, Keeper
 
-   with Keeper("/some/directory/") as k:
-       ...
+Pass a directory path to a FileStorage instance, and then pass the Storage instance to the Keeper::
+
+   with FileStorage("/some/directory/") as storage:
+        with Keeper(storage) as k:
+           ...
 
 Add string or bytes objects, and get a key in return::
 
@@ -38,7 +41,7 @@ Retrieve metadata::
        print(keeper[key].meta.mime)
 
 
-Add a stream you can write to::
+Add a binary stream you can write to::
 
        with keeper.add_stream() as stream:
             stream.write(b'A large number of bytes')
@@ -46,6 +49,24 @@ Add a stream you can write to::
 After the stream has closed, retrieve the key::
 
        key = stream.key
+
+
+Write cacheing
+--------------
+
+On slow filesystems, such as USB flash drives, it's possible to buffer writes in RAM, using a
+storage intermediary called WriteCacheStorage. Use it like this::
+
+    from keeper import FileStorage, WriteCacheStorage, Keeper
+
+    with FileStorage("/some/directory/") as file_storage:
+        with WriteCacheStorage(file_storage) as cached_storage:
+            with Keeper(cached_storage) as k:
+                ...
+
+
+Closing the WriteCacheStorage instance will block until all pending writes have been committed to
+the underlying FileStorage.
 
 
 Deployment

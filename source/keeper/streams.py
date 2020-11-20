@@ -21,7 +21,7 @@ class WriteableBinaryStream:
         self._keeper = keeper
         self._encoding = encoding
         self._stack = contextlib.ExitStack()
-        self._file = self._stack.enter_context(self._keeper._storage.openout_temp())
+        self._file = self._stack.enter_context(self._keeper.storage.openout_temp())
         self._mime = mime
         self._keywords = kwargs
         self._key = None
@@ -65,7 +65,7 @@ class WriteableBinaryStream:
 
         handle = self._file.name
 
-        with self._keeper._storage.openin_temp(handle) as temp_file:
+        with self._keeper.storage.openin_temp(handle) as temp_file:
             digester = hashlib.sha1()
             while True:
                 data = temp_file.read(16 * 1024 * 1024)
@@ -87,11 +87,11 @@ class WriteableBinaryStream:
                 type(self).__name__,
                 self._file.name
             )
-            self._keeper._storage.promote_temp(handle, key)
-            with self._keeper._storage.openout_meta(key) as meta_file:
+            self._keeper.storage.promote_temp(handle, key)
+            with self._keeper.storage.openout_meta(key) as meta_file:
                 meta_file.write(serialised_meta)
         else:
-            self._keeper._storage.remove_temp(handle)
+            self._keeper.storage.remove_temp(handle)
         logger.debug("%s closed, returning key %r", type(self).__name__, key)
         self._key = key
         return self._key

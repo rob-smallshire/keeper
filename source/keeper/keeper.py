@@ -1,6 +1,7 @@
 import hashlib
 import pickle
 import sys
+import threading
 from collections import Mapping
 import logging
 
@@ -21,20 +22,24 @@ class KeeperClosed(ValueError):
 class Keeper(Mapping):
 
     def __init__(self, storage):
+        self._lock = threading.RLock()
         self._storage = storage
 
     @property
     def storage(self):
         if self.closed:
             raise KeeperClosed()
-        return self._storage
+        with self._lock:
+            return self._storage
 
     @property
     def closed(self):
-        return self._storage is None
+        with self._lock:
+            return self._storage is None
 
     def close(self):
-        self._storage = None
+        with self._lock:
+            self._storage = None
         logger.debug("%s closing", type(self).__name__)
 
     def __enter__(self):

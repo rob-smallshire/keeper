@@ -44,7 +44,7 @@ class Value:
         self._key = key
 
         try:
-            with self._keeper._storage.openin_meta(self._key) as meta_file:
+            with self._keeper.storage.openin_meta(self._key) as meta_file:
                 self._meta = pickle.load(meta_file)
         except FileNotFoundError:
             raise KeyError(key)
@@ -61,14 +61,14 @@ class Value:
     def as_bytes(self):
         """Access the value as a bytes object.
         """
-        with self._keeper._storage.openin_data(self._key) as data_file:
+        with self._keeper.storage.openin_data(self._key) as data_file:
             data = data_file.read()
         return data
 
     def as_file(self):
         """Access the data as a read-only binary file-like object.
         """
-        return self._keeper._storage.openin_data(
+        return self._keeper.storage.openin_data(
             self._key
         )
 
@@ -79,7 +79,7 @@ class Value:
         encoding in self.meta.encoding or the default string encoding if the
         former is None.
         """
-        with self._keeper._storage.openin_data(self._key) as data_file:
+        with self._keeper.storage.openin_data(self._key) as data_file:
             s = data_file.read().decode(encoding=self.meta.encoding)
         return s
 
