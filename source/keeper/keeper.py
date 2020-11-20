@@ -149,4 +149,6 @@ class Keeper(Mapping):
     def __len__(self):
         return sum(1 for _ in self)
 
+    def __repr__(self):
+        return f"{type(self).__name__}(storage={self._storage})"
 
