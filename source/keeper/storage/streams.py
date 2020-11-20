@@ -14,6 +14,12 @@ class WriteOnlyStream:
     def close(self):
         self._raw = None
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
     @property
     def _f(self):
         if self.closed:
@@ -96,6 +102,12 @@ class ReadOnlyStream:
     def __init__(self, raw, name=None):
         self._raw = raw
         self._name = name
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
 
     def close(self):
         self._raw = None
