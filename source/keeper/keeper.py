@@ -55,6 +55,9 @@ class Keeper(Mapping):
         encoding: If encoding is None (the default) the returned file-like-
             object will only accept bytes objects. If the encoding is not None
             only strings will be accepted.
+
+        **meta: Meta data about the stream which will be stored along with the
+            stream.
         """
         logger.debug(
             "%s adding stream with MIME type %r and encoding %r",
