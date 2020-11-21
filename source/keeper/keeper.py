@@ -1,12 +1,9 @@
-import hashlib
-import pickle
-import sys
 import threading
 from collections import Mapping
 import logging
 
 from keeper.streams import WriteableBinaryStream
-from keeper.values import ValueMeta, Value
+from keeper.values import Value
 
 DEFAULT_ENCODING = "utf-8"
 
