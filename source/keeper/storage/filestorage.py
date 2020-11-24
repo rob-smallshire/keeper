@@ -6,7 +6,7 @@ import uuid
 from pathlib import Path
 
 import atomicwrites
-from atomicwrites import move_atomic
+from atomicwrites import replace_atomic
 
 from keeper.storage.storage import Storage
 from keeper.storage.streams import WriteOnlyStream, ReadOnlyStream
@@ -155,7 +155,7 @@ class FileStorage(Storage):
         data_path = self._data_path(key)
         data_path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            move_atomic(temp_path, data_path)
+            replace_atomic(temp_path, data_path)
         except FileNotFoundError:
             raise ValueError(handle)
         logger.debug(
@@ -186,7 +186,7 @@ class FileStorage(Storage):
     def openout_meta(self, key):
         meta_filepath = self._meta_path(key)
         meta_filepath.parent.mkdir(parents=True, exist_ok=True)
-        with atomicwrites.atomic_write(meta_filepath, mode="wb") as meta_file:
+        with atomicwrites.atomic_write(meta_filepath, mode="wb", overwrite=True) as meta_file:
             with WriteOnlyStream(meta_file, name=key) as stream:
                 yield stream
 
@@ -212,7 +212,7 @@ class FileStorage(Storage):
         )
         data_filepath = self._data_path(key)
         data_filepath.parent.mkdir(parents=True, exist_ok=True)
-        with atomicwrites.atomic_write(data_filepath, mode="wb") as datafile:
+        with atomicwrites.atomic_write(data_filepath, mode="wb", overwrite=True) as datafile:
             yield datafile
 
     @contextlib.contextmanager
